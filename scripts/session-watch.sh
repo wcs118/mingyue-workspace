@@ -1,7 +1,7 @@
 #!/bin/bash
 # session-watch.sh — 监控 main 会话上下文使用率,>=90% 自动触发压缩
 # 老板授权(2026-08-17):会话涨到 90% 明月直接处理,不打扰
-# cron: */30 * * * * (Asia/Shanghai)
+# cron: */30 * * * * (Asia/Shanghai), command 类型(仅异常时输出→announce 推送)
 export PATH=$PATH:/root/.npm-global/bin
 THRESHOLD=90
 LOG=/root/.openclaw/workspace/memory/events.log
@@ -25,18 +25,20 @@ else:
     print(-1)
 ")
 
-echo "$STAMP [session-watch] main 会话使用率: ${PCT}%"
 if [ "$PCT" -lt 0 ]; then
-    echo "$STAMP [session-watch] 无法读取会话状态,跳过" >> "$LOG"
+    echo "$STAMP [session-watch] ⚠️ 无法读取会话状态(检查网关)" >> "$LOG"
+    echo "⚠️ [session-watch] 无法读取 main 会话状态,请检查网关"   # 异常→推送
     exit 0
 fi
 
 if [ "$PCT" -ge "$THRESHOLD" ]; then
-    echo "$STAMP [session-watch] ⚠️ main 会话 ${PCT}% >= ${THRESHOLD}%,自动触发 /compact"
+    echo "$STAMP [session-watch] ⚠️ main 会话 ${PCT}% >= ${THRESHOLD}%,自动触发 /compact" >> "$LOG"
     RESULT=$(timeout 180 openclaw sessions compact agent:main:main 2>&1 | grep -vE "plugins|memos|AiToEarn|Telemetry|Database" | tail -5)
     echo "$STAMP [session-watch] 压缩结果: $RESULT" >> "$LOG"
-    echo "$STAMP [session-watch] 已触发压缩完成" >> "$LOG"
+    echo "⚠️ [session-watch] main 会话已达 ${PCT}%,已自动触发 /compact"
+    echo "压缩结果: $RESULT"
 else
     echo "$STAMP [session-watch] 正常(${PCT}% < ${THRESHOLD}%),无需处理" >> "$LOG"
+    # 正常时无 stdout 输出 → announce 无消息可推 → 天然静默 ✅
 fi
 exit 0

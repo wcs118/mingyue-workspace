@@ -45,6 +45,12 @@ def classify_risk(task: str) -> tuple:
     return "L0", "未命中关键词,默认只读"
 
 def route(task: str, risk_override: str = None) -> dict:
+    """
+    route.
+    
+    Returns:
+        Result of the operation.
+    """
     risk, reason = classify_risk(task) if not risk_override else (risk_override.upper(), "手动指定")
     if risk not in RISK_TOOLS:
         risk = "L0"
@@ -57,6 +63,12 @@ def route(task: str, risk_override: str = None) -> dict:
     }
 
 def smoke_test() -> int:
+    """
+    smoke test.
+    
+    Returns:
+        Result of the operation.
+    """
     cases = [
         ("查一下磁盘空间", "L0"),
         ("写一份周报文档", "L1"),
@@ -75,6 +87,9 @@ def smoke_test() -> int:
     return 0 if failed == 0 else 1
 
 def main():
+    """
+    main.
+    """
     ap = argparse.ArgumentParser(description="任务→工具集自动映射")
     ap.add_argument("mode", choices=["route", "smoke"])
     ap.add_argument("--task", default="", help="任务描述")

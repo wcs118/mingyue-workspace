@@ -33,6 +33,12 @@ WATCH_PATHS = [
 MAX_FILES = 5000  # 快照文件上限,防爆(工作区实际约 1-2K 文件)
 
 def _hash_file(p: Path) -> str:
+    """
+    hash file.
+    
+    Returns:
+        Result of the operation.
+    """
     try:
         h = hashlib.sha256()
         with open(p, "rb") as f:
@@ -65,16 +71,34 @@ def _snapshot_files() -> dict:
     return snap
 
 def _load(id_: str) -> dict:
+    """
+    load.
+    
+    Returns:
+        Result of the operation.
+    """
     f = SNAP_DIR / f"{id_}.json"
     if not f.exists():
         return None
     return json.loads(f.read_text())
 
 def _save(id_: str, data: dict):
+    """
+    save.
+    
+    Args:
+        data: payload data.
+    """
     SNAP_DIR.mkdir(parents=True, exist_ok=True)
     (SNAP_DIR / f"{id_}.json").write_text(json.dumps(data, ensure_ascii=False))
 
 def _diff(before: dict, after: dict) -> dict:
+    """
+    diff.
+    
+    Returns:
+        Result of the operation.
+    """
     changed, added, removed = [], [], []
     for k, v in after.items():
         if k not in before:
@@ -87,6 +111,12 @@ def _diff(before: dict, after: dict) -> dict:
     return {"changed": changed, "added": added, "removed": removed}
 
 def begin(id_: str, note: str = "") -> dict:
+    """
+    begin.
+    
+    Returns:
+        Result of the operation.
+    """
     if _load(id_):
         print(f"❌ 会话 {id_} 已存在,先 commit/rollback", file=sys.stderr)
         sys.exit(2)
@@ -96,6 +126,12 @@ def begin(id_: str, note: str = "") -> dict:
     return data
 
 def check(id_: str) -> dict:
+    """
+    check.
+    
+    Returns:
+        Result of the operation.
+    """
     data = _load(id_)
     if not data:
         print(f"❌ 会话 {id_} 不存在", file=sys.stderr)
@@ -112,6 +148,12 @@ def check(id_: str) -> dict:
     return d
 
 def rollback(id_: str) -> bool:
+    """
+    rollback.
+    
+    Returns:
+        Result of the operation.
+    """
     data = _load(id_)
     if not data:
         print(f"❌ 会话 {id_} 不存在", file=sys.stderr)
@@ -140,6 +182,9 @@ def rollback(id_: str) -> bool:
     return True
 
 def commit(id_: str):
+    """
+    commit.
+    """
     data = _load(id_)
     if not data:
         print(f"❌ 会话 {id_} 不存在", file=sys.stderr)
@@ -149,6 +194,12 @@ def commit(id_: str):
     print(f"✅ 会话 {id_} 提交,快照已清理")
 
 def smoke_test() -> int:
+    """
+    smoke test.
+    
+    Returns:
+        Result of the operation.
+    """
     sid = f"smoke-{int(time.time())}"
     results = []
     # begin
@@ -184,6 +235,9 @@ def smoke_test() -> int:
     return 0 if passed == len(results) else 1
 
 def main():
+    """
+    main.
+    """
     ap = argparse.ArgumentParser(description="会话级事务回滚")
     ap.add_argument("mode", choices=["begin", "check", "rollback", "commit", "smoke"])
     ap.add_argument("--id", default="", help="会话 id")

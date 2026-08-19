@@ -62,6 +62,12 @@ def load_cfg():
 
 
 def get_key():
+    """
+    get key.
+    
+    Returns:
+        Result of the operation.
+    """
     k = os.environ.get("MINIMAX_API_KEY", "")
     if not k:
         k = load_cfg().get("MINIMAX_API_KEY", "")
@@ -71,10 +77,27 @@ def get_key():
 
 
 def get_group():
+    """
+    get group.
+    
+    Returns:
+        Result of the operation.
+    """
     return os.environ.get("MINIMAX_GROUP_ID", "") or load_cfg().get("MINIMAX_GROUP_ID", "")
 
 
 def http_get(url, key, params=None):
+    """
+    http get.
+    
+    Args:
+        url: target URL.
+        key: API key or secret.
+        params: query parameters.
+    
+    Returns:
+        Result of the operation.
+    """
     if params:
         url = url + "?" + "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items())
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"})
@@ -85,6 +108,17 @@ def http_get(url, key, params=None):
 
 
 def http_post(url, payload, key, retries=3):
+    """
+    http post.
+    
+    Args:
+        url: target URL.
+        key: API key or secret.
+        retries: number of retries.
+    
+    Returns:
+        Result of the operation.
+    """
     req = urllib.request.Request(url, data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
         method="POST")
@@ -105,6 +139,15 @@ def http_post(url, payload, key, retries=3):
 
 
 def parse(args, spec):
+    """
+    parse.
+    
+    Args:
+        args: positional arguments.
+    
+    Returns:
+        Result of the operation.
+    """
     opts, pos = {}, []
     i = 0
     while i < len(args):
@@ -121,6 +164,12 @@ def parse(args, spec):
 # ① chat 文本对话
 # ═══════════════════════════════════════════════════════════
 def cmd_chat(args):
+    """
+    cmd chat.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--system": 1, "--temp": 1})
     q = " ".join(pos).strip() or sys.stdin.read().strip()
     if not q:
@@ -148,6 +197,12 @@ def cmd_chat(args):
 # ② video_gen H3 文生视频(全链路)
 # ═══════════════════════════════════════════════════════════
 def cmd_video_gen(args):
+    """
+    cmd video gen.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--out": 1, "--ratio": 1, "--duration": 1, "--model": 1, "--resolution": 1})
     prompt = " ".join(pos).strip()
     if not prompt:
@@ -209,6 +264,12 @@ def cmd_video_gen(args):
 # ③ video_query 查询状态
 # ═══════════════════════════════════════════════════════════
 def cmd_video_query(args):
+    """
+    cmd video query.
+    
+    Args:
+        args: positional arguments.
+    """
     if not args:
         sys.exit("用法: minimax-kit.py video_query <task_id>")
     st = http_get(QUERY_URL, get_key(), {"task_id": args[0]})
@@ -219,6 +280,15 @@ def cmd_video_query(args):
 # ④ files 文件检索/下载
 # ═══════════════════════════════════════════════════════════
 def cmd_files(args, quiet=False):
+    """
+    cmd files.
+    
+    Args:
+        args: positional arguments.
+    
+    Returns:
+        Result of the operation.
+    """
     opts, pos = parse(args, {"--out": 1})
     if not pos:
         sys.exit("用法: minimax-kit.py files <file_id> [--out 保存路径]")
@@ -245,6 +315,12 @@ def cmd_files(args, quiet=False):
 # ⑤ image_gen 文生图(若账号支持)
 # ═══════════════════════════════════════════════════════════
 def cmd_image_gen(args):
+    """
+    cmd image gen.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--out": 1, "--ratio": 1})
     prompt = " ".join(pos).strip()
     if not prompt:
@@ -275,6 +351,12 @@ def cmd_image_gen(args):
 # ⑥ audio_tts 语音合成(若账号支持)
 # ═══════════════════════════════════════════════════════════
 def cmd_audio_tts(args):
+    """
+    cmd audio tts.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--out": 1, "--voice": 1})
     text = " ".join(pos).strip()
     if not text:
@@ -310,6 +392,12 @@ def cmd_audio_tts(args):
 # ⑦ audio_asr 语音识别(若账号支持)
 # ═══════════════════════════════════════════════════════════
 def cmd_audio_asr(args):
+    """
+    cmd audio asr.
+    
+    Args:
+        args: positional arguments.
+    """
     if not args or not os.path.isfile(args[0]):
         sys.exit("用法: minimax-kit.py audio_asr <音频文件>")
     audio = args[0]
@@ -341,6 +429,12 @@ def cmd_audio_asr(args):
 # ⑩ embedding 向量化
 # ═══════════════════════════════════════════════════════════
 def cmd_embed(args):
+    """
+    cmd embed.
+    
+    Args:
+        args: positional arguments.
+    """
     text = " ".join(args).strip()
     if not text:
         sys.exit("用法: minimax-kit.py embed <文本>")
@@ -360,6 +454,12 @@ def cmd_embed(args):
 # ⑪ voice_clone 声音克隆
 # ═══════════════════════════════════════════════════════════
 def cmd_voice_clone(args):
+    """
+    cmd voice clone.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--name": 1})
     if not pos or not os.path.isfile(pos[0]):
         sys.exit("用法: minimax-kit.py voice_clone <音频文件> [--name 声音名]")
@@ -389,6 +489,12 @@ def cmd_voice_clone(args):
 # ⑫ models
 # ═══════════════════════════════════════════════════════════
 def cmd_models(args=None):
+    """
+    cmd models.
+    
+    Args:
+        args: positional arguments.
+    """
     print("📦 MiniMax 模型(自研封装 v3.0):")
     for m, i in MODELS.items():
         print(f"  {m:<20} [{i['type']}] {i['desc']}")
@@ -399,6 +505,12 @@ def cmd_models(args=None):
 # ⑬ doctor
 # ═══════════════════════════════════════════════════════════
 def cmd_doctor(args=None):
+    """
+    cmd doctor.
+    
+    Args:
+        args: positional arguments.
+    """
     print(f"🔬 minimax-kit v{VERSION} 自检")
     try:
         k = get_key()
@@ -422,6 +534,9 @@ HELP = f"""minimax-kit.py v{VERSION} — MiniMax 全能力自研封装
 """
 
 def main():
+    """
+    main.
+    """
     if len(sys.argv) < 2:
         print(HELP)
         return

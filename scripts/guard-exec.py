@@ -71,6 +71,9 @@ BREAKER_FILE = str(Path(__file__).resolve().parent / ".guard-breaker.json")
 
 
 def _load_breaker():
+    """
+    load breaker.
+    """
     global BREAKER_STATE
     try:
         if os.path.exists(BREAKER_FILE):
@@ -81,6 +84,9 @@ def _load_breaker():
 
 
 def _save_breaker():
+    """
+    save breaker.
+    """
     try:
         with open(BREAKER_FILE, "w") as f:
             json.dump(BREAKER_STATE, f)
@@ -104,6 +110,12 @@ class Scope:
     agent_shadow: dict = field(default_factory=dict)  # agent_id -> allow/deny 覆盖
 
     def visible(self, tool: str, agent_id: str = "global") -> bool:
+        """
+        visible.
+        
+        Returns:
+            Result of the operation.
+        """
         shadow = self.agent_shadow.get(agent_id)
         if shadow is not None:
             if tool in shadow.get("deny", set()):
@@ -120,6 +132,12 @@ class Scope:
 class GuardError(Exception):
     """守卫拒绝(不可翻案)"""
     def __init__(self, reason: str, kind: str = "redline"):
+        """
+        init.
+        
+        Args:
+            kind: kind.
+        """
         super().__init__(reason)
         self.reason = reason
         self.kind = kind  # redline | confirm | sandbox | circuit
@@ -138,6 +156,14 @@ class GuardChain:
     def __init__(self, cmd: str, timeout: int = 30, retries: int = 0,
                  scope: Scope = None, agent_id: str = "global", yes: bool = False,
                  handler: callable = None, log_path: str = None):
+        """
+        init.
+        
+        Args:
+            cmd: command.
+            timeout: timeout in seconds.
+            retries: number of retries.
+        """
         self.cmd = cmd
         self.timeout = timeout
         self.retries = retries
@@ -149,12 +175,21 @@ class GuardChain:
 
     # --- 工具识别 ---
     def _tool_name(self) -> str:
+        """
+        tool name.
+        
+        Returns:
+            Result of the operation.
+        """
         m = re.match(r"[\w./-]+", self.cmd.strip())
         return os.path.basename(m.group(0)) if m else self.cmd[:20]
 
     # --- ① pre-execute 门:允许/拒绝 ---
     def _pre_execute(self):
         # 熔断检查
+        """
+        pre execute.
+        """
         tool = self._tool_name()
         if tool not in SAFE_TOOLS and BREAKER_STATE.get(tool, 0) >= CIRCUIT_BREAK_LIMIT:
             raise GuardError(f"熔断:工具 {tool} 已连续失败 {CIRCUIT_BREAK_LIMIT} 次,停止重试", "circuit")
@@ -164,6 +199,9 @@ class GuardChain:
 
     # --- ② 单调 guards:链式校验(拒绝不可翻案) ---
     def _guards(self):
+        """
+        guards.
+        """
         for pat, reason in RED_LINE_PATTERNS:
             if re.search(pat, self.cmd, re.IGNORECASE):
                 if not self.yes:  # 红线即使 --yes 也只在白名单式场景放行,这里默认拒绝
@@ -178,6 +216,12 @@ class GuardChain:
 
     # --- ③ execute:超时/重试包装(机制3 协作取消) ---
     def _execute(self) -> GuardResult:
+        """
+        execute.
+        
+        Returns:
+            Result of the operation.
+        """
         tool = self._tool_name()
         attempts = self.retries + 1
         for attempt in range(1, attempts + 1):
@@ -213,6 +257,9 @@ class GuardChain:
 
     # --- ④ post-execute:结果校验 → 结果终结 ---
     def _post_execute(self, result: GuardResult):
+        """
+        post execute.
+        """
         if result.status == "ok" and self.handler is not None:
             try:
                 r = self.handler(result)
@@ -232,6 +279,9 @@ class GuardChain:
 
     # --- 账本(phoenix 三字段反思) ---
     def _log(self, result: GuardResult):
+        """
+        log.
+        """
         try:
             os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
             ts = time.strftime("%Y-%m-%d %H:%M")
@@ -247,6 +297,12 @@ class GuardChain:
 
     # --- 全链路 ---
     def run(self) -> GuardResult:
+        """
+        run.
+        
+        Returns:
+            Result of the operation.
+        """
         try:
             self._pre_execute()
             self._guards()
@@ -263,6 +319,12 @@ class GuardChain:
 
 # ---------- CLI ----------
 def main():
+    """
+    main.
+    
+    Returns:
+        Result of the operation.
+    """
     ap = argparse.ArgumentParser(description="明月守卫链执行器(DeepSeek Harness 机制落地)")
     ap.add_argument("mode", choices=["run", "check", "smoke"], help="run=执行 check=只检查 smoke=自测")
     ap.add_argument("--cmd", default="", help="要执行的命令")
@@ -303,6 +365,12 @@ def main():
 # ---------- 自测:守卫链全链路验证(对齐 executor 11/11 精神) ----------
 def smoke_test() -> int:
     # 清理熔断落盘状态 + 重置全局内存状态,避免跨进程残留干扰自测
+    """
+    smoke test.
+    
+    Returns:
+        Result of the operation.
+    """
     global BREAKER_STATE
     try:
         Path(BREAKER_FILE).unlink(missing_ok=True)

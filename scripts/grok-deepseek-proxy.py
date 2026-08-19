@@ -15,6 +15,9 @@ PORT = 18800
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
+        """
+        do POST.
+        """
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length)
         try:
@@ -53,6 +56,9 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": {"message": str(e)}}).encode())
 
     def do_GET(self):
+        """
+        do GET.
+        """
         url = UPSTREAM + self.path
         r = urllib.request.Request(url, method="GET")
         try:
@@ -69,6 +75,13 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": {"message": str(e)}}).encode())
 
     def log_message(self, fmt, *args):
+        """
+        log message.
+        
+        Args:
+            fmt: format.
+            *args: additional positional arguments.
+        """
         pass
 
 

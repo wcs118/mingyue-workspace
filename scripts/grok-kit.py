@@ -46,6 +46,12 @@ SESS_DIR = os.path.expanduser("~/.openclaw/workspace/data/grok-sessions")
 # 一、端点探测与密钥
 # ═══════════════════════════════════════════════════════════
 def load_env():
+    """
+    load env.
+    
+    Returns:
+        Result of the operation.
+    """
     try:
         return json.load(open(os.path.expanduser("~/.openclaw/openclaw.json"))).get("env", {})
     except Exception:
@@ -67,6 +73,17 @@ def detect():
 
 
 def http_post(url, payload, key, retries=4):
+    """
+    http post.
+    
+    Args:
+        url: target URL.
+        key: API key or secret.
+        retries: number of retries.
+    
+    Returns:
+        Result of the operation.
+    """
     req = urllib.request.Request(url, data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
         method="POST")
@@ -89,6 +106,15 @@ def http_post(url, payload, key, retries=4):
 
 
 def chat(messages, tools=None, model=None, max_tokens=8192):
+    """
+    chat.
+    
+    Args:
+        model: model identifier.
+    
+    Returns:
+        Result of the operation.
+    """
     base, key, default = detect()
     model = model or default
     payload = {"model": model, "messages": messages, "max_tokens": max_tokens}
@@ -219,6 +245,15 @@ SYSTEM_PROMPT = """你是 Grok 风格编码智能体(明月自研 grok-kit v2.0 
 
 
 def cmd_run(args):
+    """
+    cmd run.
+    
+    Args:
+        args: positional arguments.
+    
+    Returns:
+        Result of the operation.
+    """
     opts, pos = parse(args, {"--cwd": 1, "--model": 1, "--rounds": 1, "--session": 1})
     task = " ".join(pos).strip()
     if not task:
@@ -280,6 +315,15 @@ def cmd_run(args):
 # 四、verify 验证
 # ═══════════════════════════════════════════════════════════
 def verify(cwd):
+    """
+    verify.
+    
+    Args:
+        cwd: working directory.
+    
+    Returns:
+        Result of the operation.
+    """
     out = []
     pys = [f for f in os.listdir(cwd) if f.endswith(".py")][:3]
     if not pys:
@@ -305,17 +349,38 @@ def verify(cwd):
 # 五、session 会话持久化
 # ═══════════════════════════════════════════════════════════
 def sess_path(name):
+    """
+    sess path.
+    
+    Args:
+        name: name.
+    
+    Returns:
+        Result of the operation.
+    """
     os.makedirs(SESS_DIR, exist_ok=True)
     return os.path.join(SESS_DIR, f"{name}.json")
 
 
 def save_sess(name, msgs):
+    """
+    save sess.
+    
+    Args:
+        name: name.
+    """
     p = sess_path(name)
     json.dump({"messages": msgs[-20:], "updated": time.strftime("%Y-%m-%d %H:%M")},
               open(p, "w"), ensure_ascii=False, indent=2)
 
 
 def cmd_session(args):
+    """
+    cmd session.
+    
+    Args:
+        args: positional arguments.
+    """
     if not args:
         sys.exit("用法: grok-kit.py session list|show <名>|clear <名>")
     act = args[0]
@@ -352,11 +417,23 @@ def cmd_session(args):
 # 六、plan / report / sandbox / models / doctor
 # ═══════════════════════════════════════════════════════════
 def cmd_verify(args):
+    """
+    cmd verify.
+    
+    Args:
+        args: positional arguments.
+    """
     cwd = os.path.abspath(args[0]) if args else os.getcwd()
     print(verify(cwd))
 
 
 def cmd_plan(args):
+    """
+    cmd plan.
+    
+    Args:
+        args: positional arguments.
+    """
     task = " ".join(args).strip()
     if not task:
         sys.exit("用法: grok-kit.py plan <任务>")
@@ -367,6 +444,12 @@ def cmd_plan(args):
 
 
 def cmd_report(args):
+    """
+    cmd report.
+    
+    Args:
+        args: positional arguments.
+    """
     cwd = os.path.abspath(args[0]) if args else os.getcwd()
     lines = [f"# RESULT.md — grok-kit 交付报告",
              f"- 时间: {time.strftime('%Y-%m-%d %H:%M')}",
@@ -382,18 +465,36 @@ def cmd_report(args):
 
 
 def cmd_sandbox(args):
+    """
+    cmd sandbox.
+    
+    Args:
+        args: positional arguments.
+    """
     cmd = " ".join(args).strip() or "rm -rf /"
     print(f"🛡️ 沙箱测试命令: {cmd}")
     print(safe_run(cmd, os.getcwd()))
 
 
 def cmd_models(args=None):
+    """
+    cmd models.
+    
+    Args:
+        args: positional arguments.
+    """
     base, key, model = detect()
     print(f"📦 grok-kit 驱动: {model} @ {base}")
     print("  (模型无关内核: 有 XAI_API_KEY 切真 Grok, 否则 DeepSeek 免费驱动)")
 
 
 def cmd_tools(args=None):
+    """
+    cmd tools.
+    
+    Args:
+        args: positional arguments.
+    """
     print("🔧 工具六件套(全部自研):")
     for t in TOOL_SCHEMAS:
         print(f"  - {t['function']['name']}: {t['function']['description']}")
@@ -402,6 +503,12 @@ def cmd_tools(args=None):
 
 
 def cmd_doctor(args=None):
+    """
+    cmd doctor.
+    
+    Args:
+        args: positional arguments.
+    """
     print(f"🔬 grok-kit v{VERSION} 自检")
     try:
         base, key, model = detect()
@@ -420,6 +527,15 @@ def cmd_doctor(args=None):
 
 
 def parse(args, spec):
+    """
+    parse.
+    
+    Args:
+        args: positional arguments.
+    
+    Returns:
+        Result of the operation.
+    """
     opts, pos = {}, []
     i = 0
     while i < len(args):
@@ -440,6 +556,9 @@ HELP = f"""grok-kit.py v{VERSION} — Grok 编码智能体全能力自研封装
 """
 
 def main():
+    """
+    main.
+    """
     if len(sys.argv) < 2:
         print(HELP)
         return

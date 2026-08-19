@@ -33,6 +33,12 @@ JSON 字段(固定):
 
 
 def deepseek_chat(messages):
+    """
+    deepseek chat.
+    
+    Returns:
+        Result of the operation.
+    """
     key = os.environ.get("DEEPSEEK_API_KEY")
     if not key:
         raise SystemExit("❌ 缺少环境变量 DEEPSEEK_API_KEY")
@@ -66,6 +72,15 @@ def deepseek_chat(messages):
 
 
 def strip_json(text):
+    """
+    strip json.
+    
+    Args:
+        text: input text.
+    
+    Returns:
+        Result of the operation.
+    """
     t = text.strip()
     if t.startswith("```"):
         t = t.strip("`")
@@ -75,6 +90,9 @@ def strip_json(text):
 
 
 def main():
+    """
+    main.
+    """
     if len(sys.argv) < 2:
         raise SystemExit(__doc__)
     msg = sys.argv[1]

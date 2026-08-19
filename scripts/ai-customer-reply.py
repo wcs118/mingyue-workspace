@@ -32,6 +32,12 @@ SYSTEM = """你是资深电商客服话术专家。根据「企业背景」和�
 
 
 def deepseek_chat(messages):
+    """
+    deepseek chat.
+    
+    Returns:
+        Result of the operation.
+    """
     key = os.environ.get("DEEPSEEK_API_KEY")
     if not key:
         raise SystemExit("❌ 缺少环境变量 DEEPSEEK_API_KEY")
@@ -66,6 +72,9 @@ def deepseek_chat(messages):
 
 
 def main():
+    """
+    main.
+    """
     if len(sys.argv) < 2:
         raise SystemExit(__doc__)
     question = sys.argv[1]
