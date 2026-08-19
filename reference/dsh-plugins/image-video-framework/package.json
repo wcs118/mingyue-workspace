@@ -1,0 +1,16 @@
+{
+  "name": "@deepseek-ai/dsh-skill-image-video-framework",
+  "version": "0.1.0",
+  "description": "明月技能 image-video-framework → dsh 插件(自动生成)",
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {},
+  "cordis": {
+    "patch": "./cordis.patch.yml"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

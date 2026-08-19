@@ -1,0 +1,727 @@
+// Loop tick completion command: complete-tick
+// Depends on: loop-helpers.mjs, util.mjs
+
+import { readFileSync, appendFileSync, existsSync, statSync, writeFileSync, mkdirSync } from "fs";
+import { join, dirname } from "path";
+import { execFileSync } from "child_process";
+import { parsePlan, hashContent, getGitHeadHash, checkScopeCoverage } from "./loop-helpers.mjs";
+import { getFlag, resolveDir, atomicWriteSync, WRITER_SIG, TERMINAL_LOOP_STATUSES } from "./util.mjs";
+import { lockFile } from "./file-lock.mjs";
+import { resolveCallerIdentity, checkOwnership, makeOwner, ownershipEnforcementWarning } from "./driver-owner.mjs";
+import { checkEvalDistinctness, parseEvaluation } from "./eval-parser.mjs";
+
+// ─── complete-tick ──────────────────────────────────────────────
+
+export function cmdCompleteTick(args) {
+  const dir = resolveDir(args);
+  const unit = getFlag(args, "unit");
+  const artifactsRaw = getFlag(args, "artifacts", "");
+  const description = getFlag(args, "description", "");
+  const status = getFlag(args, "status", "completed");
+  const delta = getFlag(args, "delta", "");
+
+  const VALID_TICK_STATUSES = new Set(["completed", "blocked", "failed"]);
+
+  if (!unit) {
+    console.error("Usage: opc-harness complete-tick --unit <id> --artifacts <comma-sep> --description <text> --dir <path>");
+    process.exit(1);
+  }
+
+  if (!VALID_TICK_STATUSES.has(status)) {
+    console.log(JSON.stringify({ completed: false, errors: [`invalid status '${status}' — must be one of: ${[...VALID_TICK_STATUSES].join(", ")}`] }));
+    return;
+  }
+
+  if (status === "blocked" && (!description || description.trim().length === 0)) {
+    console.log(JSON.stringify({ completed: false, errors: ["blocked status requires --description explaining the blocker"] }));
+    return;
+  }
+
+  const statePath = join(dir, "loop-state.json");
+  if (!existsSync(statePath)) {
+    console.log(JSON.stringify({ completed: false, errors: ["loop-state.json not found"] }));
+    return;
+  }
+
+  const lock = lockFile(statePath, { command: "complete-tick" });
+  if (!lock.acquired) {
+    console.log(JSON.stringify({ completed: false, errors: ["could not acquire lock on loop-state.json", lock.holder ? `held by: ${lock.holder.command || lock.holder.pid}` : ""].filter(Boolean) }));
+    return;
+  }
+  try {
+
+  let state;
+  try {
+    state = JSON.parse(readFileSync(statePath, "utf8"));
+  } catch (err) {
+    console.log(JSON.stringify({ completed: false, errors: [`corrupt loop-state.json: ${err.message}`] }));
+    return;
+  }
+  const errors = [];
+  const warnings = [];
+
+  // ── Session-ownership gate ───────────────────────────────────
+  // The compaction double-drive bug slips in here: a resumed agent that jumps
+  // straight to complete-tick bypasses next-tick's in_progress guard. Refuse
+  // when a different, still-live Claude session owns the loop.
+  const caller = resolveCallerIdentity();
+  const foWarn = ownershipEnforcementWarning(caller);
+  if (foWarn) warnings.push(foWarn);
+  const ownership = checkOwnership(state, caller, { force: args.includes("--force-takeover") });
+  if (ownership.decision === "BLOCKED") {
+    console.log(JSON.stringify({
+      completed: false,
+      errors: [`not the loop owner — ${ownership.reason}`],
+      owner_conflict: true,
+      hint: "this loop is being driven by another Claude session. If that session is gone, re-run with --force-takeover to reclaim.",
+    }));
+    return;
+  }
+  if (ownership.decision === "TAKEOVER") {
+    state._owner = makeOwner(caller, state._owner && state._owner.token);
+    warnings.push(`reclaimed loop ownership — ${ownership.reason}`);
+  }
+
+  // Rule 7: terminated pipeline
+  if (TERMINAL_LOOP_STATUSES.has(state.status)) {
+    console.log(JSON.stringify({
+      completed: false,
+      errors: [`loop is '${state.status}' — cannot complete ticks on a terminated pipeline`],
+      status: "terminal",
+      reason: `pipeline is in terminal status '${state.status}'`,
+      detail: `The loop entered '${state.status}' state and cannot accept new tick completions. This is a permanent state.`,
+      hint: "re-initialize the loop with init-loop to start a fresh pipeline, or use reinit-loop to decompose stalled units",
+    }));
+    return;
+  }
+
+  // Tamper: writer signature + nonce
+  if (state._written_by !== WRITER_SIG || !state._write_nonce) {
+    errors.push("state was not written by opc-harness — possible direct edit detected");
+  }
+
+  // Tamper: plan hash
+  const planFile = state.plan_file || join(dir, "plan.md");
+  if (state._plan_hash && existsSync(planFile)) {
+    const currentPlanHash = hashContent(readFileSync(planFile, "utf8"));
+    if (currentPlanHash !== state._plan_hash) {
+      errors.push(`plan.md was modified after init-loop (hash ${state._plan_hash} \u2192 ${currentPlanHash}) — re-run init-loop`);
+    }
+  }
+
+  // Unit sequence
+  if (state.next_unit !== unit) {
+    errors.push(`expected unit '${state.next_unit}', got '${unit}'`);
+  }
+
+  // Determine unit type
+  let unitType = "unknown";
+  let allUnits = [];
+  if (existsSync(planFile)) {
+    allUnits = parsePlan(readFileSync(planFile, "utf8"));
+    const found = allUnits.find(u => u.id === unit);
+    if (found) unitType = found.type;
+  }
+
+  const artifacts = artifactsRaw ? artifactsRaw.split(",").map(a => a.trim()).filter(Boolean) : [];
+
+  let reviewVerdict = undefined;
+
+  if (status === "completed") {
+    // ── Rule 2+3+6: Evidence validation per unit type ──
+    if (unitType.startsWith("implement") || unitType.startsWith("build")) {
+      validateImplementArtifacts(unit, unitType, artifacts, errors, warnings, state, dir);
+    } else if (unitType.startsWith("review")) {
+      reviewVerdict = validateReviewArtifacts(unit, artifacts, errors, warnings, state);
+    } else if (unitType.startsWith("fix")) {
+      validateFixArtifacts(unit, artifacts, errors, warnings, state, dir);
+    } else if (unitType.startsWith("e2e") || unitType.startsWith("accept") || unitType.startsWith("ux-sim")) {
+      if (artifacts.length === 0) {
+        errors.push(`${unitType} unit '${unit}' has no artifacts — must have verification evidence`);
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    console.log(JSON.stringify({ completed: false, errors, warnings: warnings.length > 0 ? warnings : undefined }));
+    return;
+  }
+
+  // ── Rule 13: Backlog auto-accumulation from review findings ──
+  if (unitType.startsWith("review") && reviewVerdict && reviewVerdict !== "PASS") {
+    _accumulateBacklog(dir, unit, artifacts, warnings);
+  }
+
+  // Only advance to next unit on successful completion
+  let nextUnit = null;
+  if (status === "completed") {
+    const currentIdx = allUnits.findIndex(u => u.id === unit);
+    nextUnit = currentIdx >= 0 && currentIdx < allUnits.length - 1
+      ? allUnits[currentIdx + 1].id
+      : null;
+  } else {
+    nextUnit = unit;
+  }
+
+  // ── Summary lint: reject deferral language on final tick ──
+  if (nextUnit === null && description) {
+    const DEFERRAL_NEGATION = /\b(not?\s+defer|no\s+deferral|nothing\s+defer|without\s+defer|zero\s+defer|isn't\s+defer)/i;
+    const DEFERRAL_PATTERNS = /\b(defer(?:red)?|next\s+loop|future\s+work|follow[\s-]?up\s+loop|punt(?:ed)?|later\s+loop|TODO\s*:?\s*next)\b/i;
+    if (DEFERRAL_PATTERNS.test(description) && !DEFERRAL_NEGATION.test(description)) {
+      errors.push(
+        `final tick description contains deferral language ("${description.match(DEFERRAL_PATTERNS)[0]}") — the loop must finish what it starts. Rewrite without deferral or explain specifically what remains and why.`
+      );
+    }
+  }
+
+  // ── Scope coverage check on final tick ──
+  const skipScopeCheck = args.includes("--skip-scope-check");
+  if (nextUnit === null && state._task_scope && state._task_scope.length > 0 && !skipScopeCheck) {
+    const tickHistory = [...(state._tick_history || []), { unit, tick: (state.tick || 0) + 1, status, verdict: reviewVerdict, description: description || undefined }];
+    const uncovered = checkScopeCoverage(state._task_scope, tickHistory, allUnits);
+    if (uncovered.length > 0) {
+      errors.push(
+        `pipeline cannot complete — ${uncovered.length} scope item(s) not covered by any completed unit: ${uncovered.map(s => s.id).join(", ")}. ` +
+        `Uncovered: ${uncovered.map(s => `${s.id}: ${s.text}`).join("; ")}. ` +
+        `Use --skip-scope-check to bypass.`
+      );
+    }
+  }
+
+  // Check for errors accumulated by summary lint
+  if (errors.length > 0) {
+    console.log(JSON.stringify({ completed: false, errors, warnings: warnings.length > 0 ? warnings : undefined }));
+    return;
+  }
+
+  // Update state
+  const newTick = (state.tick || 0) + 1;
+  state.tick = newTick;
+  state.unit = unit;
+  state.description = description || `Completed unit ${unit} (${unitType})`;
+  state.status = status;
+  state.artifacts = artifacts;
+  state.next_unit = nextUnit;
+  state.review_of_previous = "";
+  state._written_by = WRITER_SIG;
+  state._last_modified = new Date().toISOString();
+  state._git_head = getGitHeadHash(state.projectDir);
+
+  if (!Array.isArray(state._tick_history)) state._tick_history = [];
+  state._tick_history.push({ unit, tick: newTick, status, verdict: reviewVerdict, description: description || undefined, delta: delta || undefined });
+
+  atomicWriteSync(statePath, JSON.stringify(state, null, 2) + "\n");
+
+  // Rule 14: append to progress.md
+  const progressPath = join(dir, "progress.md");
+  const progressLine = `- **Tick ${newTick}** [${unit}] (${unitType}): ${description || status} \u2014 ${new Date().toISOString()}\n`;
+  try {
+    appendFileSync(progressPath, progressLine);
+  } catch {
+    warnings.push("failed to append to progress.md");
+  }
+
+  // ── Checkpoint: tick-N-summary.md ──
+  _writeCheckpoint(dir, {
+    tick: newTick,
+    unit,
+    unitType,
+    status,
+    description: description || `Completed unit ${unit} (${unitType})`,
+    verdict: reviewVerdict,
+    artifacts,
+    nextUnit,
+    planFile,
+    allUnits,
+    state,
+    delta,
+  }, warnings);
+
+  console.log(JSON.stringify({
+    completed: true,
+    tick: newTick,
+    unit,
+    unitType,
+    next_unit: nextUnit,
+    terminate: nextUnit === null,
+    verdict: reviewVerdict,
+    warnings: warnings.length > 0 ? warnings : undefined,
+  }));
+
+  } finally {
+    lock.release();
+  }
+}
+
+// ── Validation helpers ──────────────────────────────────────────
+
+const MAX_ARTIFACT_SIZE = 10 * 1024 * 1024; // 10 MB
+
+function _runTestScript(cmd, loopDir, tick, projectDir, label = "test") {
+  const evidenceDir = join(loopDir, "evidence");
+  mkdirSync(evidenceDir, { recursive: true });
+  const logPath = join(evidenceDir, `tick-${tick + 1}-${label}.log`);
+
+  // Resolve project root: use explicit projectDir, or walk up from loopDir
+  let projectRoot = projectDir || loopDir;
+  if (!projectDir) {
+    let d = loopDir;
+    while (d !== dirname(d)) {
+      if (existsSync(join(d, "package.json")) || existsSync(join(d, ".git"))) {
+        projectRoot = d;
+        break;
+      }
+      d = dirname(d);
+    }
+  }
+
+  let stdout = "", stderr = "", exitCode = 0, timedOut = false;
+  try {
+    stdout = execFileSync("sh", ["-c", cmd], {
+      cwd: projectRoot,
+      encoding: "utf8",
+      timeout: 120_000,
+      maxBuffer: 5 * 1024 * 1024,
+    });
+  } catch (err) {
+    if (err.killed || err.signal === "SIGTERM") {
+      timedOut = true;
+      exitCode = 124; // conventional timeout exit code (like GNU timeout)
+    } else {
+      exitCode = err.status || 1;
+    }
+    stdout = err.stdout || "";
+    stderr = err.stderr || "";
+  }
+
+  const log = [
+    `# Harness-owned test execution`,
+    `# Command: ${cmd}`,
+    `# CWD: ${projectRoot}`,
+    `# Exit code: ${exitCode}`,
+    timedOut ? `# TIMED OUT after 120s` : "",
+    `# Timestamp: ${new Date().toISOString()}`,
+    ``,
+    `--- stdout ---`,
+    stdout,
+    `--- stderr ---`,
+    stderr,
+  ].filter(Boolean).join("\n");
+
+  try { writeFileSync(logPath, log); } catch { /* best effort */ }
+  return { exitCode, logPath, timedOut };
+}
+
+function _checkArtifactSize(a, errors) {
+  const sz = statSync(a).size;
+  if (sz > MAX_ARTIFACT_SIZE) {
+    errors.push(`artifact too large (${Math.round(sz / 1024 / 1024)}MB, max 10MB): ${a}`);
+    return false;
+  }
+  return true;
+}
+
+function validateImplementArtifacts(unit, unitType, artifacts, errors, warnings, state, dir) {
+  if (artifacts.length === 0) {
+    errors.push(`implement unit '${unit}' has no artifacts — must have test evidence`);
+  }
+  for (const a of artifacts) {
+    if (!existsSync(a)) {
+      errors.push(`artifact not found: ${a}`);
+    } else if (!_checkArtifactSize(a, errors)) {
+      continue;
+    } else {
+      const content = readFileSync(a, "utf8");
+      if (content.trim().length === 0) {
+        errors.push(`artifact is empty: ${a}`);
+      } else if (a.endsWith(".json")) {
+        try {
+          const data = JSON.parse(content);
+          const hasTestFields = data.tests_run != null || data.testsRun != null ||
+            data.passed != null || data.failures != null || data.exitCode != null ||
+            data.pass != null || data.fail != null || data.total != null;
+          if (!hasTestFields) {
+            warnings.push(`artifact '${a}' is JSON but has no test-result fields`);
+          }
+          if (hasTestFields) {
+            if (!data._command && !data.command) {
+              warnings.push(`artifact '${a}' has no _command field — test results should record what command was executed`);
+            }
+            if (data.durationMs != null && data.durationMs <= 0) {
+              errors.push(`artifact '${a}' has durationMs=${data.durationMs} — test runs must take positive time`);
+            }
+            if (data._timestamp) {
+              const ts = new Date(data._timestamp).getTime();
+              const now = Date.now();
+              if (ts > now + 60000) {
+                errors.push(`artifact '${a}' has future timestamp — evidence must be from current tick`);
+              } else if (now - ts > 30 * 60 * 1000) {
+                warnings.push(`artifact '${a}' timestamp is >30min old — may be stale evidence`);
+              }
+            }
+            try {
+              const fstat = statSync(a);
+              const fileAge = Date.now() - fstat.mtimeMs;
+              if (fileAge > 30 * 60 * 1000) {
+                warnings.push(`artifact '${a}' file mtime is >30min ago — may be reused from previous run`);
+              }
+            } catch { /* stat fail is non-fatal */ }
+          }
+        } catch { /* raw output ok */ }
+      }
+    }
+  }
+
+  // Rule 6: UI implement needs screenshot
+  if (unitType.includes("ui") || unitType.includes("frontend") || unitType.includes("fe")) {
+    const hasScreenshot = artifacts.some(a => a.endsWith(".png") || a.endsWith(".jpg") || a.endsWith(".jpeg"));
+    if (!hasScreenshot) {
+      errors.push(`UI implement unit '${unit}' has no screenshot artifact (.png/.jpg) — UI changes require visual verification`);
+    }
+  }
+
+  // Rule 3: atomic commit
+  const currentHead = getGitHeadHash(state.projectDir);
+  if (currentHead && state._git_head && currentHead === state._git_head) {
+    errors.push(`git HEAD unchanged since last tick — implement unit must produce a commit`);
+  }
+
+  // Rule 7b: reject .gitkeep-only or trivial commits
+  const HEX_HASH_RE = /^[0-9a-f]{4,40}$/i;
+  if (currentHead && state._git_head && currentHead !== state._git_head) {
+    if (!HEX_HASH_RE.test(state._git_head) || !HEX_HASH_RE.test(currentHead)) {
+      warnings.push("git HEAD hash failed format validation — skipping commit content check");
+    } else {
+      try {
+        const diffStat = execFileSync("git", ["diff", "--name-only", `${state._git_head}..${currentHead}`], { encoding: "utf8", timeout: 5000, cwd: state.projectDir || undefined }).trim();
+        const changedFiles = diffStat.split("\n").filter(Boolean);
+        const substantiveFiles = changedFiles.filter(f => !f.endsWith(".gitkeep") && !f.endsWith(".keep"));
+        if (substantiveFiles.length === 0 && changedFiles.length > 0) {
+          errors.push(`commit only modifies .gitkeep files — implement unit must produce substantive code changes`);
+        }
+      } catch {
+        warnings.push("git diff failed (old HEAD may be unreachable after rebase) — .gitkeep guard skipped");
+      }
+    }
+  }
+
+  // Rule 9: external validator enforcement — harness-owned test execution
+  if (state._external_validators) {
+    if (!state._external_validators.pre_commit_hooks) {
+      warnings.push("no pre-commit hooks detected — git commit has no external quality gate (lint/typecheck/format)");
+    }
+    if (state._external_validators.test_script) {
+      const testResult = _runTestScript(state._external_validators.test_script, dir, state.tick || 0, state.projectDir);
+      if (testResult.exitCode !== 0) {
+        const reason = testResult.timedOut ? "TIMED OUT (120s)" : `exit ${testResult.exitCode}`;
+        errors.push(`test_script '${state._external_validators.test_script}' failed (${reason}) — implement unit must pass tests. Log: ${testResult.logPath}`);
+      } else {
+        warnings.push(`test_script passed (exit 0). Log: ${testResult.logPath}`);
+      }
+    }
+    if (state._external_validators.lint_script) {
+      const lintResult = _runTestScript(state._external_validators.lint_script, dir, state.tick || 0, state.projectDir, "lint");
+      if (lintResult.exitCode !== 0) {
+        const reason = lintResult.timedOut ? "TIMED OUT (120s)" : `exit ${lintResult.exitCode}`;
+        errors.push(`lint_script '${state._external_validators.lint_script}' failed (${reason}) — code must pass lint. Log: ${lintResult.logPath}`);
+      }
+    }
+    if (state._external_validators.typecheck_script) {
+      const tcResult = _runTestScript(state._external_validators.typecheck_script, dir, state.tick || 0, state.projectDir, "typecheck");
+      if (tcResult.exitCode !== 0) {
+        const reason = tcResult.timedOut ? "TIMED OUT (120s)" : `exit ${tcResult.exitCode}`;
+        errors.push(`typecheck_script '${state._external_validators.typecheck_script}' failed (${reason}) — code must pass type checking. Log: ${tcResult.logPath}`);
+      }
+    }
+  }
+
+  // Rule 10: evidence timestamp freshness — artifacts must be newer than tick start
+  const tickStart = state._last_modified ? new Date(state._last_modified).getTime() : 0;
+  if (tickStart > 0) {
+    for (const a of artifacts) {
+      if (!existsSync(a)) continue;
+      const mtime = statSync(a).mtimeMs;
+      if (mtime < tickStart) {
+        errors.push(`artifact '${a}' is stale (mtime ${new Date(mtime).toISOString()} < tick start ${state._last_modified}) — evidence must be produced during this tick, not reused from a prior run`);
+      }
+    }
+  }
+}
+
+function validateReviewArtifacts(unit, artifacts, errors, warnings, state) {
+  if (artifacts.length === 0) {
+    errors.push(`review unit '${unit}' has no artifacts — must have eval-*.md files`);
+  }
+  const evalFiles = artifacts.filter(a => a.endsWith(".md"));
+  if (evalFiles.length < 2) {
+    errors.push(`review unit '${unit}' has ${evalFiles.length} eval file(s) — need \u22652 for independent review (separate subagents)`);
+  }
+  const evalContents = [];
+  for (const a of artifacts) {
+    if (!existsSync(a)) {
+      errors.push(`artifact not found: ${a}`);
+    } else if (!_checkArtifactSize(a, errors)) {
+      continue;
+    } else {
+      const content = readFileSync(a, "utf8");
+      if (content.trim().length === 0) {
+        errors.push(`artifact is empty: ${a}`);
+      } else if (a.endsWith(".md")) {
+        evalContents.push({ path: a, content });
+        const hasSeverity = /[\ud83d\udd34\ud83d\udfe1\ud83d\udd35]/.test(content) || /LGTM/i.test(content) ||
+          /critical|warning|suggestion/i.test(content);
+        if (!hasSeverity) {
+          errors.push(`eval '${a}' has no severity markers (\ud83d\udd34\ud83d\udfe1\ud83d\udd35) or LGTM — review must produce structured findings`);
+        }
+      }
+    }
+  }
+
+  // Distinctness check — delegate to shared function
+  if (evalContents.length >= 2) {
+    const dc = checkEvalDistinctness(evalContents);
+    errors.push(...dc.errors);
+    warnings.push(...dc.warnings);
+  }
+
+  // Rule 5: hash eval files for tamper detection
+  const evalHashes = {};
+  for (const a of evalFiles) {
+    if (existsSync(a)) {
+      evalHashes[a] = hashContent(readFileSync(a, "utf8"));
+    }
+  }
+  state._last_review_evals = evalHashes;
+
+  // Synthesize verdict from eval files (reuse parseEvaluation from eval-parser)
+  if (evalContents.length === 0) return undefined;
+
+  let totalCritical = 0, totalWarning = 0, totalSuggestion = 0;
+  for (const { content } of evalContents) {
+    const parsed = parseEvaluation(content);
+    totalCritical += parsed.critical;
+    totalWarning += parsed.warning;
+    totalSuggestion += parsed.suggestion;
+  }
+
+  let verdict = "PASS";
+  if (totalCritical > 0) verdict = "FAIL";
+  else if (totalWarning > 0) verdict = "ITERATE";
+
+  return verdict;
+}
+
+function validateFixArtifacts(unit, artifacts, errors, warnings, state, dir) {
+  // Rule 5: verify eval file integrity from previous review
+  if (state._last_review_evals && typeof state._last_review_evals === "object") {
+    for (const [evalPath, expectedHash] of Object.entries(state._last_review_evals)) {
+      if (existsSync(evalPath)) {
+        const actualHash = hashContent(readFileSync(evalPath, "utf8"));
+        if (actualHash !== expectedHash) {
+          errors.push(`eval file '${evalPath}' was modified after review (hash ${expectedHash} \u2192 ${actualHash}) — review findings must not be altered before fix`);
+        }
+      } else {
+        errors.push(`eval file '${evalPath}' from previous review was deleted — review findings must persist through fix`);
+      }
+    }
+  }
+
+  // Rule 17: fix must reference upstream review findings
+  if (artifacts.length > 0) {
+    let referencesFindings = false;
+    for (const a of artifacts) {
+      if (existsSync(a) && _checkArtifactSize(a, errors)) {
+        const content = readFileSync(a, "utf8");
+        if (/[\ud83d\udd34\ud83d\udfe1\ud83d\udd35]/.test(content) || /\w+\.\w+:\d+/.test(content)) {
+          referencesFindings = true;
+        }
+      }
+    }
+    if (!referencesFindings) {
+      warnings.push(`fix unit '${unit}' artifacts don't reference review findings — fixes should trace to specific \ud83d\udd34/\ud83d\udfe1 items or file:line refs`);
+    }
+  }
+
+  // Rule 3: fix should also commit
+  const currentHead = getGitHeadHash(state.projectDir);
+  if (currentHead && state._git_head && currentHead === state._git_head) {
+    errors.push(`git HEAD unchanged — fix unit must produce a commit`);
+  }
+
+  // Rule 9: fix must also pass tests + lint + typecheck
+  if (state._external_validators) {
+    if (state._external_validators.test_script) {
+      const testResult = _runTestScript(state._external_validators.test_script, dir, state.tick || 0, state.projectDir);
+      if (testResult.exitCode !== 0) {
+        const reason = testResult.timedOut ? "TIMED OUT (120s)" : `exit ${testResult.exitCode}`;
+        errors.push(`test_script '${state._external_validators.test_script}' failed (${reason}) — fix unit must pass tests. Log: ${testResult.logPath}`);
+      }
+    }
+    if (state._external_validators.lint_script) {
+      const lintResult = _runTestScript(state._external_validators.lint_script, dir, state.tick || 0, state.projectDir, "lint");
+      if (lintResult.exitCode !== 0) {
+        const reason = lintResult.timedOut ? "TIMED OUT (120s)" : `exit ${lintResult.exitCode}`;
+        errors.push(`lint_script '${state._external_validators.lint_script}' failed (${reason}) — fix must pass lint. Log: ${lintResult.logPath}`);
+      }
+    }
+    if (state._external_validators.typecheck_script) {
+      const tcResult = _runTestScript(state._external_validators.typecheck_script, dir, state.tick || 0, state.projectDir, "typecheck");
+      if (tcResult.exitCode !== 0) {
+        const reason = tcResult.timedOut ? "TIMED OUT (120s)" : `exit ${tcResult.exitCode}`;
+        errors.push(`typecheck_script '${state._external_validators.typecheck_script}' failed (${reason}) — fix must pass type checking. Log: ${tcResult.logPath}`);
+      }
+    }
+  }
+}
+
+// ── Backlog auto-accumulation ──────────────────────────────────
+
+// Detect lines that contain a severity emoji but carry no actual finding content —
+// e.g. markdown headers ("### 🔴 Critical"), label-only lines ("🟡 Warning:"),
+// and empty-section markers ("🔴 None.", "🟡 N/A"). These should NOT inflate
+// the backlog because the review produced no issue of that severity.
+function _isEmptySeverityLine(trimmed) {
+  if (!trimmed) return true;
+  // Markdown header — structural, not a finding
+  if (/^#{1,6}\s/.test(trimmed)) return true;
+  // Strip severity emojis + list markers + formatting to examine remainder
+  const stripped = trimmed
+    .replace(/^[-*]\s+/, "")
+    .replace(/[🔴🟡🔵]/g, "")
+    .replace(/[*_`\[\]()]/g, "")
+    .trim();
+  // Bare severity labels with optional colon / em-dash / parenthetical source
+  const LABEL_ONLY = /^(critical|warning|suggestion|major|minor|must\s*fix|recommended|nit|info)\s*:?\s*(—.*)?$/i;
+  // Explicit emptiness markers ("None.", "N/A", "N.A.", "—")
+  const EMPTY_MARKER = /^(none|n\/?a|n\.a\.?|nothing|—|-)\s*\.?$/i;
+  return stripped.length === 0 || LABEL_ONLY.test(stripped) || EMPTY_MARKER.test(stripped);
+}
+
+function _accumulateBacklog(dir, unit, artifacts, warnings) {
+  const backlogPath = join(dir, "backlog.md");
+  const findingLines = [];
+
+  for (const a of artifacts) {
+    if (!a.endsWith(".md") || !existsSync(a)) continue;
+    let content;
+    try {
+      content = readFileSync(a, "utf8");
+    } catch {
+      warnings.push(`backlog: could not read ${a}`);
+      continue;
+    }
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (trimmed.length === 0) continue;
+      // Extract both 🔴 (critical) and 🟡 (iterate) findings
+      if (/🔴/.test(trimmed) || /🟡/.test(trimmed)) {
+        // Skip empty severity headers / labels / "None." markers
+        if (_isEmptySeverityLine(trimmed)) continue;
+        // Also skip if next non-blank line is an explicit emptiness marker
+        // (e.g. "🟡 Warning:" header followed by "- None.")
+        if (/:\s*$/.test(trimmed)) {
+          let j = i + 1;
+          while (j < lines.length && lines[j].trim().length === 0) j++;
+          if (j < lines.length) {
+            const next = lines[j].trim().replace(/^[-*]\s+/, "");
+            if (/^(none|n\/?a|n\.a\.?)\s*\.?$/i.test(next)) continue;
+          }
+        }
+        // Strip leading list markers to avoid double-prefix: "- 🟡 foo" → "🟡 foo"
+        const cleaned = trimmed.replace(/^[-*]\s+/, "");
+        findingLines.push({ text: cleaned, source: a });
+      }
+    }
+  }
+
+  if (findingLines.length === 0) return;
+
+  // Ensure file starts with a top-level heading if it doesn't exist yet
+  const needsHeader = !existsSync(backlogPath);
+
+  const sectionHeader = `\n## From review unit ${unit} — ${new Date().toISOString()}\n`;
+  const items = findingLines.map(f => `- [ ] ${f.text} _(from ${f.source})_`).join("\n") + "\n";
+
+  try {
+    const content = (needsHeader ? "# Backlog\n" : "") + sectionHeader + items;
+    appendFileSync(backlogPath, content);
+  } catch {
+    warnings.push("failed to append to backlog.md");
+  }
+}
+
+// ── Checkpoint writer ──────────────────────────────────────────
+// Writes tick-N-summary.md — a self-contained snapshot that lets
+// a new session resume without conversation history.
+
+function _writeCheckpoint(dir, ctx, warnings) {
+  const {
+    tick, unit, unitType, status, description,
+    verdict, artifacts, nextUnit, planFile, allUnits, state, delta,
+  } = ctx;
+
+  const fileName = `tick-${tick}-summary.md`;
+  const filePath = join(dir, fileName);
+
+  // Collect previous tick summaries for context chain
+  const prevTicks = (state._tick_history || [])
+    .filter(t => t.tick < tick)
+    .slice(-3)  // last 3 for brevity
+    .map(t => `  - Tick ${t.tick}: ${t.unit} (${t.status})${t.description ? ` — ${t.description}` : ""}`)
+    .join("\n");
+
+  // Remaining units from pre-parsed plan
+  let remainingUnits = "";
+  const currentIdx = allUnits.findIndex(u => u.id === unit);
+  const remaining = allUnits.slice(currentIdx + 1);
+  if (remaining.length > 0) {
+    remainingUnits = remaining.map(u => `  - ${u.id}: ${u.type} — ${u.description}`).join("\n");
+  } else {
+    remainingUnits = "  (none — this was the final unit)";
+  }
+
+  const md = [
+    `# Checkpoint: Tick ${tick}`,
+    "",
+    `> Auto-generated by opc-harness complete-tick — ${new Date().toISOString()}`,
+    "",
+    `## Current`,
+    `- **Unit**: ${unit} (${unitType})`,
+    `- **Status**: ${status}`,
+    `- **Verdict**: ${verdict || "n/a"}`,
+    `- **Description**: ${description}`,
+    "",
+    `## Artifacts`,
+    artifacts.length > 0
+      ? artifacts.map(a => `- ${a}`).join("\n")
+      : "- (none)",
+    "",
+    delta ? `## Technical Delta\n${delta}` : "",
+    "",
+    `## Recent History`,
+    prevTicks || "  (first tick)",
+    "",
+    `## Next`,
+    nextUnit ? `- **Next unit**: ${nextUnit}` : "- **Pipeline complete** — no more units",
+    "",
+    `## Remaining Units`,
+    remainingUnits || "  (unknown — plan file not found)",
+    "",
+    `## Resume Context`,
+    `- Loop state: ${join(dir, "loop-state.json")}`,
+    `- Plan: ${planFile}`,
+    `- Progress: ${join(dir, "progress.md")}`,
+    state._task_scope && state._task_scope.length > 0
+      ? `- Task scope: ${state._task_scope.map(s => s.id).join(", ")}`
+      : "",
+    "",
+  ].filter(Boolean).join("\n") + "\n";
+
+  try {
+    atomicWriteSync(filePath, md);
+  } catch {
+    warnings.push(`failed to write checkpoint ${fileName}`);
+  }
+}

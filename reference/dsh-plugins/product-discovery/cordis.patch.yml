@@ -1,0 +1,12 @@
+# product-discovery — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/product-discovery/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/product-discovery   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/product-discovery)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/product-discovery/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-product-discovery
+      name: '@deepseek-ai/dsh-skill-product-discovery'
+      config:
+        skill: 'product-discovery'
+        description: 'name: product-discovery'
+        source: skills/product-discovery/SKILL.md

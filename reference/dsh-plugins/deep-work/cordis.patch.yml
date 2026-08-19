@@ -1,0 +1,12 @@
+# deep-work — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/deep-work/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/deep-work   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/deep-work)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/deep-work/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-deep-work
+      name: '@deepseek-ai/dsh-skill-deep-work'
+      config:
+        skill: 'deep-work'
+        description: 'name: deep-work'
+        source: skills/deep-work/SKILL.md

@@ -1,0 +1,12 @@
+# ai-seo — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/ai-seo/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/ai-seo   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/ai-seo)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/ai-seo/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-ai-seo
+      name: '@deepseek-ai/dsh-skill-ai-seo'
+      config:
+        skill: 'ai-seo'
+        description: 'description: "Optimize content for AI search and LLM citations across AI Overviews, ChatGPT, Perplexity, Claude, Gemini,'
+        source: skills/ai-seo/SKILL.md

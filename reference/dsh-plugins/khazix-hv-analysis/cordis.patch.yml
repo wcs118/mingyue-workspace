@@ -1,0 +1,12 @@
+# khazix-hv-analysis — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/khazix-hv-analysis/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/khazix-hv-analysis   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/khazix-hv-analysis)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/khazix-hv-analysis/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-khazix-hv-analysis
+      name: '@deepseek-ai/dsh-skill-khazix-hv-analysis'
+      config:
+        skill: 'khazix-hv-analysis'
+        description: 'name: hv-analysis'
+        source: skills/khazix-hv-analysis/SKILL.md

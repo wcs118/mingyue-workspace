@@ -1,0 +1,12 @@
+# create-prd — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/create-prd/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/create-prd   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/create-prd)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/create-prd/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-create-prd
+      name: '@deepseek-ai/dsh-skill-create-prd'
+      config:
+        skill: 'create-prd'
+        description: 'name: create-prd'
+        source: skills/create-prd/SKILL.md

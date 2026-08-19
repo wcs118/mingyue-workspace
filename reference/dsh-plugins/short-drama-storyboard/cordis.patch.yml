@@ -1,0 +1,12 @@
+# short-drama-storyboard — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/short-drama-storyboard/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/short-drama-storyboard   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/short-drama-storyboard)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/short-drama-storyboard/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-short-drama-storyboard
+      name: '@deepseek-ai/dsh-skill-short-drama-storyboard'
+      config:
+        skill: 'short-drama-storyboard'
+        description: 'name: short-drama-storyboard'
+        source: skills/short-drama-storyboard/SKILL.md

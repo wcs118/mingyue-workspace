@@ -1,0 +1,12 @@
+# cohort-analysis — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/cohort-analysis/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/cohort-analysis   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/cohort-analysis)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/cohort-analysis/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-cohort-analysis
+      name: '@deepseek-ai/dsh-skill-cohort-analysis'
+      config:
+        skill: 'cohort-analysis'
+        description: 'name: cohort-analysis'
+        source: skills/cohort-analysis/SKILL.md

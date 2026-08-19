@@ -1,0 +1,12 @@
+# zero-hallucination-coder — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/zero-hallucination-coder/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/zero-hallucination-coder   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/zero-hallucination-coder)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/zero-hallucination-coder/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-zero-hallucination-coder
+      name: '@deepseek-ai/dsh-skill-zero-hallucination-coder'
+      config:
+        skill: 'zero-hallucination-coder'
+        description: 'name: zero-hallucination-coder'
+        source: skills/zero-hallucination-coder/SKILL.md

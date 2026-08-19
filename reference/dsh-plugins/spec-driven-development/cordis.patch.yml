@@ -1,0 +1,12 @@
+# spec-driven-development — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/spec-driven-development/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/spec-driven-development   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/spec-driven-development)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/spec-driven-development/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-spec-driven-development
+      name: '@deepseek-ai/dsh-skill-spec-driven-development'
+      config:
+        skill: 'spec-driven-development'
+        description: 'name: spec-driven-development'
+        source: skills/spec-driven-development/SKILL.md

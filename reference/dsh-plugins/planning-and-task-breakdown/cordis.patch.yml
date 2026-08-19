@@ -1,0 +1,12 @@
+# planning-and-task-breakdown — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/planning-and-task-breakdown/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/planning-and-task-breakdown   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/planning-and-task-breakdown)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/planning-and-task-breakdown/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-planning-and-task-breakdown
+      name: '@deepseek-ai/dsh-skill-planning-and-task-breakdown'
+      config:
+        skill: 'planning-and-task-breakdown'
+        description: 'name: planning-and-task-breakdown'
+        source: skills/planning-and-task-breakdown/SKILL.md

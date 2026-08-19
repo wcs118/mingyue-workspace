@@ -1,0 +1,12 @@
+# weekly-review — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/weekly-review/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/weekly-review   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/weekly-review)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/weekly-review/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-weekly-review
+      name: '@deepseek-ai/dsh-skill-weekly-review'
+      config:
+        skill: 'weekly-review'
+        description: 'name: weekly-review'
+        source: skills/weekly-review/SKILL.md

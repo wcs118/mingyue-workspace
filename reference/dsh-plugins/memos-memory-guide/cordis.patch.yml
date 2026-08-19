@@ -1,0 +1,12 @@
+# memos-memory-guide — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/memos-memory-guide/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/memos-memory-guide   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/memos-memory-guide)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/memos-memory-guide/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-memos-memory-guide
+      name: '@deepseek-ai/dsh-skill-memos-memory-guide'
+      config:
+        skill: 'memos-memory-guide'
+        description: 'name: memos-memory-guide'
+        source: skills/memos-memory-guide/SKILL.md

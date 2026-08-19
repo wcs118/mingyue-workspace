@@ -1,0 +1,12 @@
+# kimi-k2.5 — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/kimi-k2.5/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/kimi-k2.5   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/kimi-k2.5)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/kimi-k2.5/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-kimi-k2-5
+      name: '@deepseek-ai/dsh-skill-kimi-k2-5'
+      config:
+        skill: 'kimi-k2.5'
+        description: 'name: kimi-k2.5'
+        source: skills/kimi-k2.5/SKILL.md

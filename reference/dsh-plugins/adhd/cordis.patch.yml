@@ -1,0 +1,12 @@
+# adhd — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/adhd/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/adhd   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/adhd)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/adhd/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-adhd
+      name: '@deepseek-ai/dsh-skill-adhd'
+      config:
+        skill: 'adhd'
+        description: 'description: Parallel divergent ideation for coding agents. Spawns N isolated branches under different cognitive frames '
+        source: skills/adhd/SKILL.md

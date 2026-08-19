@@ -1,0 +1,232 @@
+{
+  "_说明": "已吸收技能的上游仓库追踪清单。skills-updater.sh 定期检查这些仓库最新 commit，有更新自动拉新入库。",
+  "_格式": "本地目录名 -> {owner/repo, 分支, 集合}",
+  "repos": {
+    "claude-skills": {
+      "repo": "alirezarezvani/claude-skills",
+      "branch": "main",
+      "collection": "claude-skills"
+    },
+    "trending-agents/adhd": {
+      "repo": "UditAkhourii/adhd",
+      "branch": "main",
+      "collection": "trending-agents"
+    },
+    "trending-agents/agents-best-practices": {
+      "repo": "vercel-labs/skills",
+      "branch": "main",
+      "collection": "trending-agents"
+    },
+    "trending-agents/ai-builder-club-skills": {
+      "repo": "AI-Builder-Club/skills",
+      "branch": "main",
+      "collection": "trending-agents"
+    },
+    "trending-agents/fable-method": {
+      "repo": "Sahir619/fable-method",
+      "branch": "main",
+      "collection": "trending-agents"
+    },
+    "trending-agents/internet-court-skill": {
+      "repo": "genlayerlabs/skills",
+      "branch": "main",
+      "collection": "trending-agents"
+    },
+    "trending-agents/loop-engineering": {
+      "repo": "cobusgreyling/loop-engineering",
+      "branch": "main",
+      "collection": "trending-agents"
+    },
+    "trending-agents/pentesterflow-agent": {
+      "repo": "PentesterFlow/agent",
+      "branch": "main",
+      "collection": "trending-agents"
+    },
+    "trending-agents/ponytail": {
+      "repo": "fastapi/full-stack-fastapi-template",
+      "branch": "master",
+      "collection": "trending-agents"
+    },
+    "trending-agents/shushu-internship-tool": {
+      "repo": "LiuMengxuan04/vibe-resume",
+      "branch": "main",
+      "collection": "trending-agents"
+    },
+    "trending-agents/t3mp3st": {
+      "repo": "elder-plinius/T3MP3ST",
+      "branch": "main",
+      "collection": "trending-agents"
+    },
+    "skills-wave2/agent-skills-addyosmani": {
+      "repo": "addyosmani/agent-skills",
+      "branch": "main",
+      "collection": "skills-wave2"
+    },
+    "skills-wave2/agents-wshobson": {
+      "repo": "wshobson/agents",
+      "branch": "main",
+      "collection": "skills-wave2"
+    },
+    "skills-wave2/awesome-claude-skills": {
+      "repo": "ComposioHQ/awesome-claude-skills",
+      "branch": "master",
+      "collection": "skills-wave2"
+    },
+    "skills-wave2/awesome-openclaw-skills": {
+      "repo": "VoltAgent/awesome-openclaw-skills",
+      "branch": "main",
+      "collection": "skills-wave2"
+    },
+    "skills-wave2/baoyu-skills": {
+      "repo": "JimLiu/baoyu-skills",
+      "branch": "main",
+      "collection": "skills-wave2"
+    },
+    "skills-wave2/humanizer": {
+      "repo": "blader/humanizer",
+      "branch": "main",
+      "collection": "skills-wave2"
+    },
+    "skills-wave2/i-have-adhd": {
+      "repo": "ayghri/i-have-adhd",
+      "branch": "main",
+      "collection": "skills-wave2"
+    },
+    "skills-wave2/obsidian-skills": {
+      "repo": "kepano/obsidian-skills",
+      "branch": "main",
+      "collection": "skills-wave2"
+    },
+    "skills-wave2/planning-with-files": {
+      "repo": "OthmanAdi/planning-with-files",
+      "branch": "master",
+      "collection": "skills-wave2"
+    },
+    "skills-wave2/pm-skills": {
+      "repo": "phuryn/pm-skills",
+      "branch": "main",
+      "collection": "skills-wave2"
+    },
+    "skills-wave2/taste-skill": {
+      "repo": "Leonxlnx/taste-skill",
+      "branch": "main",
+      "collection": "skills-wave2"
+    },
+    "video-skills/drama-skills": {
+      "repo": "worldwonderer/drama-skills",
+      "branch": "main",
+      "collection": "video-skills"
+    },
+    "video-skills/jianying-editor": {
+      "repo": "luoluoluo22/jianying-editor-skill",
+      "branch": "main",
+      "collection": "video-skills"
+    },
+    "video-skills/narrator-ai": {
+      "repo": "NarratorAI-Studio/narrator-ai-cli-skill",
+      "branch": "main",
+      "collection": "video-skills"
+    },
+    "video-skills/onlyshot": {
+      "repo": "A-cat-with-carrots/OnlyShot",
+      "branch": "main",
+      "collection": "video-skills"
+    },
+    "video-skills/short-drama": {
+      "repo": "0xsline/short-drama",
+      "branch": "main",
+      "collection": "video-skills"
+    },
+    "video-skills/shuohao-skills": {
+      "repo": "eternityspring/shuohao-skills",
+      "branch": "main",
+      "collection": "video-skills"
+    },
+    "video-skills/video-shotcraft": {
+      "repo": "Vincentwei1021/video-shotcraft",
+      "branch": "main",
+      "collection": "video-skills"
+    },
+    "arbor": {
+      "repo": "RUC-NLPIR/Arbor",
+      "branch": "main",
+      "collection": "arbor",
+      "_note": "自主研究agent技能套件(11技能), 2026-08-13热榜吸收"
+    },
+    "guizang-ppt-skill": {
+      "repo": "op7418/guizang-ppt-skill",
+      "branch": "main",
+      "collection": "guizang-ppt-skill",
+      "_note": "归藏网页PPT技能(23.8K★), 2026-08-13 TOP2000吸收"
+    },
+    "khazix-skills": {
+      "repo": "KKKKhazix/khazix-skills",
+      "branch": "main",
+      "collection": "khazix",
+      "_note": "卡兹克AI技能合集6个, 2026-08-13 TOP2000吸收"
+    },
+    "claude-plugins-official": {
+      "repo": "anthropics/claude-plugins-official",
+      "branch": "main",
+      "collection": "claude-plugins-official",
+      "_note": "Anthropic官方插件技能精选9个, 2026-08-13 TOP2000吸收"
+    },
+    "google-skills": {
+      "repo": "google/skills",
+      "branch": "main",
+      "collection": "google-skills",
+      "_note": "Google官方109技能(ads/analytics/cloud), 2026-08-13入库待按需激活"
+    },
+    "kimi-k2.5": {
+      "repo": "MoonshotAI/Kimi-K2.5",
+      "branch": "master",
+      "collection": "skills/kimi-k2.5"
+    },
+    "agentic-awesome-skills": {
+      "repo": "sickn33/agentic-awesome-skills",
+      "branch": "main",
+      "collection": "agentic-awesome-skills"
+    },
+    "deepseek-harness": {
+      "repo": "deepseek-ai/deepseek-harness",
+      "branch": "master",
+      "collection": "skills/deepseek-harness",
+      "_note": "DeepSeek官方agent harness,dsh,2026-08-16真吸收,3天11.6万star"
+    },
+    "claude-skills/addyosmani-agent-skills": {
+      "repo": "addyosmani/agent-skills",
+      "branch": "main",
+      "collection": "claude-skills"
+    },
+    "claude-skills/supervisor-skills": {
+      "repo": "HKUSTDial/Supervisor-Skills",
+      "branch": "main",
+      "collection": "claude-skills"
+    },
+    "claude-skills/ai-research-skills": {
+      "repo": "Orchestra-Research/AI-Research-SKILLs",
+      "branch": "main",
+      "collection": "claude-skills"
+    },
+    "aas/agentic-awesome-skills": {
+      "repo": "sickn33/agentic-awesome-skills",
+      "branch": "main",
+      "collection": "aas"
+    },
+    "glm-5": {
+      "repo": "zai-org/GLM-5",
+      "branch": "main",
+      "collection": "glm-5"
+    },
+    "minimax-h3": {
+      "repo": "MiniMax-AI/MiniMax-H3",
+      "branch": "main",
+      "note": "H3 开源视频生成"
+    },
+    "minimax-h3-comfyui": {
+      "repo": "MiniMaxH3ComfyUI/MiniMax-H3-ComfyUI",
+      "branch": "main",
+      "note": "H3 开源视频生成"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+# prioritization-frameworks — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/prioritization-frameworks/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/prioritization-frameworks   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/prioritization-frameworks)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/prioritization-frameworks/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-prioritization-frameworks
+      name: '@deepseek-ai/dsh-skill-prioritization-frameworks'
+      config:
+        skill: 'prioritization-frameworks'
+        description: 'name: prioritization-frameworks'
+        source: skills/prioritization-frameworks/SKILL.md

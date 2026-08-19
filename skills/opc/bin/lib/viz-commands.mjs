@@ -1,0 +1,189 @@
+// Visualization and replay commands: getMarker, cmdViz, cmdReplayData
+// Depends on: flow-templates.mjs, util.mjs
+
+import { readFileSync, readdirSync, existsSync } from "fs";
+import { join } from "path";
+import { FLOW_TEMPLATES, resolveFlowTemplate, loadFlowFromFile } from "./flow-templates.mjs";
+import { getFlag, resolveDirReadOnly } from "./util.mjs";
+
+export function getMarker(nodeId, state) {
+  if (!state) return "○";
+  if (state.status === "completed") {
+    if (state.currentNode === nodeId) return "✅";
+    if (state.history?.some((h) => h.nodeId === nodeId)) return "✅";
+  }
+  if (state.currentNode === nodeId) return "▶";
+  if (state.history?.some((h) => h.nodeId === nodeId)) return "✅";
+  if (state.entryNode === nodeId && state.currentNode !== nodeId) return "✅";
+  return "○";
+}
+
+export function cmdViz(args) {
+  // Read-only but needs session auto-resolve so viz works without explicit --dir
+  const dir = resolveDirReadOnly(args, null);
+  const jsonOut = args.includes("--json");
+
+  // Try to load state first for _flow_file auto-restore
+  let state = null;
+  if (dir) {
+    const sp = join(dir, "flow-state.json");
+    if (existsSync(sp)) {
+      try {
+        state = JSON.parse(readFileSync(sp, "utf8"));
+        if (state._flow_file) loadFlowFromFile(state._flow_file);
+      } catch { /* ignore */ }
+    }
+  }
+
+  const resolved = resolveFlowTemplate(args, state);
+  if (resolved.error) {
+    console.error(resolved.error);
+    process.exit(1);
+  }
+  const { template } = resolved;
+
+  // Collect loopbacks: gates with FAIL/ITERATE edges
+  const loopbacks = [];
+  for (const [nodeId, edges] of Object.entries(template.edges)) {
+    for (const [verdict, target] of Object.entries(edges)) {
+      if (target && verdict !== "PASS") {
+        loopbacks.push({ gate: nodeId, verdict, target });
+      }
+    }
+  }
+
+  if (jsonOut) {
+    const nodes = template.nodes.map((id) => ({ id, status: getMarker(id, state) }));
+    console.log(JSON.stringify({
+      nodes,
+      loopbacks,
+      completed: state?.status === "completed",
+      terminalNode: state?.status === "completed" ? state.currentNode || null : null,
+    }, null, 2));
+    return;
+  }
+
+  // ASCII output — prefer FAIL over ITERATE for display
+  const loopMap = {};
+  for (const lb of loopbacks) {
+    if (!loopMap[lb.gate] || lb.verdict === "FAIL") loopMap[lb.gate] = lb;
+  }
+
+  for (let i = 0; i < template.nodes.length; i++) {
+    const id = template.nodes[i];
+    const marker = getMarker(id, state);
+    let line = `  ${marker} ${id}`;
+    if (loopMap[id]) line += `          ← ${loopMap[id].verdict} → ${loopMap[id].target}`;
+    console.log(line);
+    if (i < template.nodes.length - 1) console.log("  │");
+  }
+  if (state?.status === "completed") {
+    console.log("");
+    console.log(`  ══ FLOW COMPLETED${state.currentNode ? ` at ${state.currentNode}` : ""} ══`);
+  }
+}
+
+// ─── replay-data ────────────────────────────────────────────────
+// Outputs flow-state + handshakes as JSON for the HTML viewer.
+
+export function cmdReplayData(args) {
+  // Read-only but needs session auto-resolve
+  const dir = resolveDirReadOnly(args);
+
+  const statePath = join(dir, "flow-state.json");
+  if (!existsSync(statePath)) {
+    console.error(`No flow-state.json in ${dir}. Nothing to replay.`);
+    process.exit(1);
+  }
+
+  let state;
+  try {
+    state = JSON.parse(readFileSync(statePath, "utf8"));
+  } catch (err) {
+    console.error(`Cannot parse flow-state.json: ${err.message}`);
+    process.exit(1);
+  }
+
+  const template = (() => {
+    // Auto-restore flow template from _flow_file if needed
+    if (state._flow_file) loadFlowFromFile(state._flow_file);
+    const t = Object.hasOwn(FLOW_TEMPLATES, state.flowTemplate) ? FLOW_TEMPLATES[state.flowTemplate] : null;
+    return t;
+  })();
+  if (!template) {
+    console.error(`Unknown flow template: ${state.flowTemplate}`);
+    process.exit(1);
+  }
+
+  const handshakes = {};
+  for (const nodeId of template.nodes) {
+    const hp = join(dir, "nodes", nodeId, "handshake.json");
+    if (existsSync(hp)) {
+      try {
+        const hs = JSON.parse(readFileSync(hp, "utf8"));
+        const details = [];
+        const nodeDir = join(dir, "nodes", nodeId);
+        try {
+          const entries = readdirSync(nodeDir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.isDirectory() && entry.name.startsWith("run_")) {
+              const runDir = join(nodeDir, entry.name);
+              const runFiles = readdirSync(runDir);
+              for (const rf of runFiles) {
+                if (rf.endsWith(".md") || rf.endsWith(".txt")) {
+                  try {
+                    const content = readFileSync(join(runDir, rf), "utf8");
+                    details.push({ file: rf, run: entry.name, content });
+                  } catch { /* skip */ }
+                }
+              }
+            }
+          }
+        } catch { /* no run dirs */ }
+        hs.details = details;
+        // Replay metadata: timing, agent count, finding summary
+        const meta = {};
+        if (hs.startedAt && hs.completedAt) {
+          meta.durationMs = new Date(hs.completedAt).getTime() - new Date(hs.startedAt).getTime();
+        } else if (hs.timestamp) {
+          meta.durationMs = null;
+        }
+        meta.agentCount = Array.isArray(hs.artifacts) ? hs.artifacts.filter(a => /eval-.*\.md$/.test(a)).length : 0;
+        // Finding summary: count severity emojis across eval details
+        let fCritical = 0, fWarning = 0, fSuggestion = 0;
+        for (const d of details) {
+          if (d.file.startsWith("eval")) {
+            const content = d.content || "";
+            fCritical += (content.match(/🔴/g) || []).length;
+            fWarning += (content.match(/🟡/g) || []).length;
+            fSuggestion += (content.match(/🔵/g) || []).length;
+          }
+        }
+        meta.findingSummary = { critical: fCritical, warning: fWarning, suggestion: fSuggestion };
+        hs.meta = meta;
+        handshakes[nodeId] = hs;
+      } catch { /* skip */ }
+    }
+  }
+
+  const loopbacks = [];
+  for (const [nodeId, edges] of Object.entries(template.edges)) {
+    for (const [verdict, target] of Object.entries(edges)) {
+      if (target && verdict !== "PASS") {
+        loopbacks.push({ gate: nodeId, verdict, target });
+      }
+    }
+  }
+
+  console.log(JSON.stringify({
+    flowTemplate: state.flowTemplate,
+    nodes: template.nodes,
+    edges: template.edges,
+    loopbacks,
+    entryNode: state.entryNode,
+    currentNode: state.currentNode,
+    totalSteps: state.totalSteps,
+    history: state.history,
+    handshakes,
+  }, null, 2));
+}

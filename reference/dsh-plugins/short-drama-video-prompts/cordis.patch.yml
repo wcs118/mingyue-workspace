@@ -1,0 +1,12 @@
+# short-drama-video-prompts — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/short-drama-video-prompts/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/short-drama-video-prompts   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/short-drama-video-prompts)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/short-drama-video-prompts/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-short-drama-video-prompts
+      name: '@deepseek-ai/dsh-skill-short-drama-video-prompts'
+      config:
+        skill: 'short-drama-video-prompts'
+        description: 'name: short-drama-video-prompts'
+        source: skills/short-drama-video-prompts/SKILL.md

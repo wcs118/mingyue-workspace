@@ -1,0 +1,278 @@
+{
+  "schemaVersion": "1.0",
+  "description": "技能库精筛版(骨架)。完整候选池见 skills-top1000.json(由 fetch-top1000-skills.sh 生成)",
+  "generated": "2026-08-11",
+  "coreRepos": [
+    "obra/superpowers",
+    "anthropics/skills",
+    "openai/codex"
+  ],
+  "skills": [
+    {
+      "name": "human-writing",
+      "source": "热榜吸收",
+      "type": "写作",
+      "category": "内容",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "dragon-ppt-maker",
+      "source": "热榜吸收",
+      "type": "工具型",
+      "category": "演示",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "framework-ops",
+      "source": "自建",
+      "type": "运维",
+      "category": "框架",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "systematic-debugging",
+      "source": "obra/superpowers",
+      "type": "方法型",
+      "category": "编码",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "test-driven-development",
+      "source": "obra/superpowers",
+      "type": "方法型",
+      "category": "编码",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "verification-before-completion",
+      "source": "obra/superpowers",
+      "type": "方法型",
+      "category": "编码",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "writing-plans",
+      "source": "obra/superpowers",
+      "type": "方法型",
+      "category": "编码",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "executing-plans",
+      "source": "obra/superpowers",
+      "type": "方法型",
+      "category": "编码",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "subagent-driven-development",
+      "source": "obra/superpowers",
+      "type": "方法型",
+      "category": "编码",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "dispatching-parallel-agents",
+      "source": "obra/superpowers",
+      "type": "方法型",
+      "category": "编码",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "requesting-code-review",
+      "source": "obra/superpowers",
+      "type": "方法型",
+      "category": "编码",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "receiving-code-review",
+      "source": "obra/superpowers",
+      "type": "方法型",
+      "category": "编码",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "brainstorming",
+      "source": "obra/superpowers",
+      "type": "方法型",
+      "category": "编码",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "using-git-worktrees",
+      "source": "obra/superpowers",
+      "type": "方法型",
+      "category": "编码",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "finishing-a-development-branch",
+      "source": "obra/superpowers",
+      "type": "方法型",
+      "category": "编码",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "novel-characters",
+      "source": "eternityspring/shuohao-skills(热榜)",
+      "type": "工具型",
+      "category": "内容创作",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "novel-outline",
+      "source": "eternityspring/shuohao-skills(热榜)",
+      "type": "工具型",
+      "category": "内容创作",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "claude-inc",
+      "source": "alebgl77/claude-inc(一人公司8部门50技能)",
+      "type": "工具型",
+      "category": "一人公司/部门技能",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "opc",
+      "source": "iamtouchskyer/opc(一人公司21角色)",
+      "type": "工具型",
+      "category": "一人公司/角色编排",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "opc-skills",
+      "source": "Frog1205/OPC-Skills(中文18技能)",
+      "type": "工具型",
+      "category": "一人公司/法务文档",
+      "absorbed": "2026-08-11"
+    },
+    {
+      "name": "kimi-code",
+      "source": "moonshotai/kimi-code(GitHub 热榜)",
+      "status": "installed",
+      "note": "终端AI编码agent v0.34.0,DeepSeek驱动,含Kimi K3情报"
+    },
+    {
+      "name": "h3-prompt-writing",
+      "source": "MiniMax-AI/MiniMax-H3(官方skills)",
+      "status": "installed",
+      "note": "视频生成技能,中英双语,依赖H3 API"
+    },
+    {
+      "name": "3d-animation-short-generator",
+      "source": "MiniMax-AI/MiniMax-H3(官方skills)",
+      "status": "installed",
+      "note": "视频生成技能,中英双语,依赖H3 API"
+    },
+    {
+      "name": "papercraft-stop-motion-explainer",
+      "source": "MiniMax-AI/MiniMax-H3(官方skills)",
+      "status": "installed",
+      "note": "视频生成技能,中英双语,依赖H3 API"
+    },
+    {
+      "name": "paper-collage-explainer-generator",
+      "source": "MiniMax-AI/MiniMax-H3(官方skills)",
+      "status": "installed",
+      "note": "视频生成技能,中英双语,依赖H3 API"
+    },
+    {
+      "name": "minimalist-product-ad-generator",
+      "source": "MiniMax-AI/MiniMax-H3(官方skills)",
+      "status": "installed",
+      "note": "视频生成技能,中英双语,依赖H3 API"
+    },
+    {
+      "name": "brand-promo-video-generator",
+      "source": "MiniMax-AI/MiniMax-H3(官方skills)",
+      "status": "installed",
+      "note": "视频生成技能,中英双语,依赖H3 API"
+    },
+    {
+      "name": "music-video-subtitle-generator",
+      "source": "MiniMax-AI/MiniMax-H3(官方skills)",
+      "status": "installed",
+      "note": "视频生成技能,中英双语,依赖H3 API"
+    },
+    {
+      "name": "co-op-game-intro-generator",
+      "source": "MiniMax-AI/MiniMax-H3(官方skills)",
+      "status": "installed",
+      "note": "视频生成技能,中英双语,依赖H3 API"
+    },
+    {
+      "name": "handdrawn-live-video-generator",
+      "source": "MiniMax-AI/MiniMax-H3(官方skills)",
+      "status": "installed",
+      "note": "视频生成技能,中英双语,依赖H3 API"
+    },
+    {
+      "name": "grok-build-docs",
+      "source": "xai-org/grok-build(官方用户指南)",
+      "status": "installed",
+      "note": "25篇文档知识库,含自定义模型接DeepSeek配置法;二进制待装(x.ai网络不通)"
+    },
+    {
+      "name": "claude-skills",
+      "repo": "alirezarezvani/claude-skills",
+      "stars": 24293,
+      "license": "MIT",
+      "absorbed": "2026-08-12",
+      "total_skills": 362,
+      "activated": 35,
+      "desc": "345+ Claude Code skills & agent skills & plugins — engineering, marketing, product, compliance, C-level advisory, research, business ops, finance, productivity",
+      "location": "skills-db/claude-skills/ (全量) + skills/ (激活35个核心)",
+      "index": "skills-db/claude-skills/INDEX.md"
+    },
+    {
+      "name": "trending-agents",
+      "repo": "GitHub热榜 agent 主题前30名",
+      "stars": "100K+ 综合",
+      "license": "混合(MIT/Apache-2.0/AGPL)",
+      "absorbed": "2026-08-12",
+      "total_skills": 180,
+      "activated": 16,
+      "desc": "热榜 agent 前30: 10个技能仓库全量入库 + 16个核心技能激活(agent设计/loop工程/安全/工作流)",
+      "location": "skills-db/trending-agents/ (全量) + skills/ (激活16个)",
+      "index": "skills-db/trending-agents/INDEX.md",
+      "framework_intel": {
+        "omnigent": "⭐8.6K AI agent框架/meta-harness, 111MB, Apache-2.0 — 待评估安装",
+        "T3MP3ST": "⭐5.5K 自主红队平台, AGPL-3.0 — 已吸收5技能",
+        "KiroCrew": "⭐2.7K 持久化工作区, 390MB — 过大, 记录待评估",
+        "lazycodex": "⭐3.2K 复杂代码库agent harness, 89MB — 待评估",
+        "Raven": "⭐3.5K 记忆优先agent harness, 13.8MB — 待评估",
+        "loopx": "⭐4.2K loop工程状态内核, 36MB — 待评估",
+        "tutti": "⭐3.2K 人+agent协作平台, 233MB — 过大, 记录",
+        "open-connector": "⭐4.6K SaaS认证网关, 18.5MB — 待评估",
+        "MiMo-Code": "⭐12.7K 小米模型+agent共进化, 58MB — 情报",
+        "skill-recorder": "⭐2.9K 微软录屏生成技能, 6MB — 待评估"
+      }
+    },
+    {
+      "name": "skills-wave2",
+      "repo": "GitHub 高星 skills 仓库第2波(11个)",
+      "stars": "19K-105K",
+      "license": "混合(MIT/Apache-2.0)",
+      "absorbed": "2026-08-12",
+      "total_skills": 1197,
+      "activated": 46,
+      "desc": "addyosmani/agent-skills(⭐86K生产级工程) + phuryn/pm-skills(⭐25K PM全套) + JimLiu/baoyu-skills(⭐24.8K宝玉内容创作) + planning-with-files + humanizer + taste-skill + obsidian-skills + i-have-adhd + ComposioHQ合集(864) + wshobson/agents(180) + VoltAgent/openclaw索引",
+      "location": "skills-db/skills-wave2/ (全量) + skills/ (激活46个)",
+      "index": "skills-db/skills-wave2/INDEX.md"
+    },
+    {
+      "name": "video-skills",
+      "repo": "GitHub 热榜直播带货/短视频/短剧技能(7个仓库)",
+      "stars": "221-102K",
+      "license": "混合(MIT/Apache-2.0)",
+      "absorbed": "2026-08-12",
+      "total_skills": 18,
+      "activated": 18,
+      "desc": "短剧全链路(drama-skills 10技能 + 0xsline微短剧剧本 + shuohao拆角色/大纲/设定图 + OnlyShot流水线) + 剪映自动化剪辑(jianying-editor) + AI解说(narrator-ai-cli) + 电影级产品视频(video-shotcraft/Remotion) + MoneyPrinterTurbo等框架情报",
+      "location": "skills-db/video-skills/ (全量) + skills/ (激活18个)",
+      "index": "skills-db/video-skills/INDEX.md"
+    }
+  ]
+}

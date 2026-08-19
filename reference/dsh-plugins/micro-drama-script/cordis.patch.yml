@@ -1,0 +1,12 @@
+# micro-drama-script — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/micro-drama-script/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/micro-drama-script   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/micro-drama-script)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/micro-drama-script/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-micro-drama-script
+      name: '@deepseek-ai/dsh-skill-micro-drama-script'
+      config:
+        skill: 'micro-drama-script'
+        description: 'name: micro-drama-script'
+        source: skills/micro-drama-script/SKILL.md

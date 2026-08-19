@@ -1,0 +1,347 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>明月调度器工作流程 v2 — 借鉴 DeepSeek Harness 机制(两图合并版)</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f8fafc;
+    --fg: #172033;
+    --muted: #5b6475;
+    --line: #64748b;
+    --neutral: #e2e8f0;
+    --input: #bfdbfe;
+    --process: #c7d2fe;
+    --storage: #99f6e4;
+    --external: #fde68a;
+    --risk: #fecaca;
+    --ok: #bbf7d0;
+    --warn: #fde68a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f172a;
+      --fg: #e5e7eb;
+      --muted: #a3adbd;
+      --line: #94a3b8;
+      --neutral: #334155;
+      --input: #1d4ed8;
+      --process: #4338ca;
+      --storage: #0f766e;
+      --external: #92400e;
+      --risk: #991b1b;
+      --ok: #166534;
+      --warn: #92400e;
+    }
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  main {
+    max-width: 1100px;
+    margin: 32px auto;
+    padding: 0 20px;
+  }
+  svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .title {
+    font-size: 20px;
+    font-weight: 650;
+    fill: var(--fg);
+  }
+  .label {
+    font-size: 13px;
+    font-weight: 600;
+    fill: var(--fg);
+  }
+  .small {
+    font-size: 11px;
+    fill: var(--muted);
+  }
+  .node {
+    stroke: var(--line);
+    stroke-width: 1;
+  }
+  .neutral { fill: var(--neutral); }
+  .input { fill: var(--input); }
+  .process { fill: var(--process); }
+  .storage { fill: var(--storage); }
+  .external { fill: var(--external); }
+  .risk { fill: var(--risk); }
+  .ok { fill: var(--ok); }
+  .edge {
+    stroke: var(--line);
+    stroke-width: 1.5;
+    fill: none;
+  }
+  .zone {
+    fill: none;
+    stroke: var(--line);
+    stroke-width: 1;
+    stroke-dasharray: 6 5;
+    opacity: 0.8;
+  }
+  .legend {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin: 14px 0 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1px solid var(--line);
+    display: inline-block;
+  }
+  .notes {
+    margin-top: 18px;
+    background: color-mix(in srgb, var(--neutral) 55%, transparent);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 13px;
+  }
+  .notes b { color: var(--fg); }
+  .notes li { margin: 4px 0; }
+  h2 {
+    font-size: 16px;
+    margin: 28px 0 6px;
+  }
+</style>
+<main>
+  <h2>明月调度器工作流程 v2(借鉴 DeepSeek Harness · 两图合并版)</h2>
+  <div class="legend">
+    <span><i class="swatch" style="background:var(--input)"></i>输入</span>
+    <span><i class="swatch" style="background:var(--process)"></i>处理/执行</span>
+    <span><i class="swatch" style="background:var(--storage)"></i>存储/持久化</span>
+    <span><i class="swatch" style="background:var(--external)"></i>外部系统/插件</span>
+    <span><i class="swatch" style="background:var(--ok)"></i>成功出口</span>
+    <span><i class="swatch" style="background:var(--risk)"></i>失败/回滚</span>
+    <span><i class="swatch" style="background:var(--neutral)"></i>守卫/判断</span>
+  </div>
+
+  <svg viewBox="0 0 1080 1580" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--line)"/>
+      </marker>
+    </defs>
+
+    <!-- 第0层 zone: 插件化架构 -->
+    <rect class="zone" x="30" y="30" width="1020" height="150" rx="12"/>
+    <text class="small" x="46" y="52">第0层 · 插件化架构(图2:Everything is a Plugin · Cordis 运行时)</text>
+
+    <rect class="node storage" x="60" y="70" width="280" height="80" rx="8"/>
+    <text class="label" x="200" y="100" text-anchor="middle">🧩 调度器 = 插件注册表</text>
+    <text class="small" x="200" y="120" text-anchor="middle">skills-db · 技能登记</text>
+    <text class="small" x="200" y="136" text-anchor="middle">工具·模型适配器·会话日志</text>
+
+    <path class="edge" d="M 340 110 L 430 110" marker-end="url(#arrow)"/>
+
+    <rect class="node process" x="430" y="70" width="280" height="80" rx="8"/>
+    <text class="label" x="570" y="100" text-anchor="middle">⚙️ 运行时 = 插件运行时</text>
+    <text class="small" x="570" y="120" text-anchor="middle">OpenClaw 网关 + dsh</text>
+    <text class="small" x="570" y="136" text-anchor="middle">加载·调度·执行·可替换</text>
+
+    <path class="edge" d="M 710 110 L 800 110" marker-end="url(#arrow)"/>
+
+    <rect class="node external" x="800" y="70" width="230" height="80" rx="8"/>
+    <text class="label" x="915" y="100" text-anchor="middle">🔌 插件协议</text>
+    <text class="small" x="915" y="120" text-anchor="middle">技能 → dsh-plugin 格式</text>
+    <text class="small" x="915" y="136" text-anchor="middle">官方运行时 + 自研调度器双跑</text>
+
+    <!-- 阶段一 zone -->
+    <rect class="zone" x="30" y="200" width="1020" height="180" rx="12"/>
+    <text class="small" x="46" y="222">阶段一 · 任务接收与作用域初始化(机制2:作用域注册)</text>
+
+    <rect class="node input" x="60" y="240" width="200" height="56" rx="8"/>
+    <text class="label" x="160" y="264" text-anchor="middle">📩 老板指令</text>
+    <text class="small" x="160" y="282" text-anchor="middle">微信 / 明示任务</text>
+
+    <path class="edge" d="M 260 268 L 330 268" marker-end="url(#arrow)"/>
+
+    <rect class="node process" x="330" y="240" width="220" height="56" rx="8"/>
+    <text class="label" x="440" y="264" text-anchor="middle">解析:目标 / 约束 / 交付物</text>
+    <text class="small" x="440" y="282" text-anchor="middle">定类型·风险等级·完成标准</text>
+
+    <path class="edge" d="M 550 268 L 620 268" marker-end="url(#arrow)"/>
+
+    <rect class="node neutral" x="620" y="240" width="200" height="56" rx="8"/>
+    <text class="label" x="720" y="264" text-anchor="middle">作用域注册</text>
+    <text class="small" x="720" y="282" text-anchor="middle">全局 / 单-agent 三层可见性</text>
+
+    <path class="edge" d="M 820 268 L 890 268" marker-end="url(#arrow)"/>
+
+    <rect class="node risk" x="890" y="240" width="140" height="56" rx="8"/>
+    <text class="label" x="960" y="260" text-anchor="middle">重名?冲突?</text>
+    <text class="small" x="960" y="278" text-anchor="middle">重复名抛错</text>
+
+    <path class="edge" d="M 960 296 L 960 325" marker-end="url(#arrow)"/>
+    <rect class="node risk" x="890" y="325" width="140" height="40" rx="8"/>
+    <text class="small" x="960" y="349" text-anchor="middle">拒绝启动,防覆盖</text>
+
+    <!-- 阶段二 zone -->
+    <rect class="zone" x="30" y="400" width="1020" height="340" rx="12"/>
+    <text class="small" x="46" y="422">阶段二 · 事务式会话启动(机制4:agent-loop 事务式生命周期)</text>
+
+    <rect class="node process" x="60" y="440" width="220" height="56" rx="8"/>
+    <text class="label" x="170" y="464" text-anchor="middle">创建会话 + agent</text>
+    <text class="small" x="170" y="482" text-anchor="middle">挂载工具·注入上下文</text>
+
+    <path class="edge" d="M 280 468 L 360 468" marker-end="url(#arrow)"/>
+
+    <rect class="node neutral" x="360" y="440" width="180" height="56" rx="8"/>
+    <text class="label" x="450" y="464" text-anchor="middle">启动成功?</text>
+    <text class="small" x="450" y="482" text-anchor="middle">setup 校验</text>
+
+    <path class="edge" d="M 450 496 L 450 550" marker-end="url(#arrow)"/>
+    <text class="small" x="462" y="532">是</text>
+
+    <path class="edge" d="M 540 468 L 620 468" marker-end="url(#arrow)"/>
+    <text class="small" x="565" y="460">否</text>
+    <rect class="node risk" x="620" y="440" width="200" height="56" rx="8"/>
+    <text class="label" x="720" y="464" text-anchor="middle">自动回滚</text>
+    <text class="small" x="720" y="482" text-anchor="middle">不残留半成品会话</text>
+
+    <path class="edge" d="M 820 468 L 900 468" marker-end="url(#arrow)"/>
+    <rect class="node risk" x="900" y="440" width="120" height="56" rx="8"/>
+    <text class="small" x="960" y="472" text-anchor="middle">失败退出</text>
+
+    <!-- 成功启动 → 阶段三 -->
+    <rect class="node storage" x="60" y="550" width="220" height="56" rx="8"/>
+    <text class="label" x="170" y="574" text-anchor="middle">会话持久化</text>
+    <text class="small" x="170" y="592" text-anchor="middle">append-only 事件日志</text>
+
+    <path class="edge" d="M 280 578 L 360 578" marker-end="url(#arrow)"/>
+
+    <!-- 阶段三 zone -->
+    <rect class="zone" x="30" y="760" width="1020" height="400" rx="12"/>
+    <text class="small" x="46" y="782">阶段三 · 执行循环(机制1:工具守卫链 + 机制3:协作式取消)</text>
+
+    <rect class="node process" x="60" y="800" width="200" height="56" rx="8"/>
+    <text class="label" x="160" y="824" text-anchor="middle">🔄 agent 循环</text>
+    <text class="small" x="160" y="842" text-anchor="middle">模型请求 → 工具调用</text>
+    <text class="small" x="160" y="856" text-anchor="middle">可委派子任务</text>
+
+    <path class="edge" d="M 260 828 L 340 828" marker-end="url(#arrow)"/>
+
+    <!-- 守卫链 -->
+    <rect class="node neutral" x="340" y="800" width="150" height="56" rx="8"/>
+    <text class="label" x="415" y="824" text-anchor="middle">① pre-execute</text>
+    <text class="small" x="415" y="842" text-anchor="middle">允许/拒绝门</text>
+
+    <path class="edge" d="M 490 828 L 560 828" marker-end="url(#arrow)"/>
+
+    <rect class="node neutral" x="560" y="800" width="150" height="56" rx="8"/>
+    <text class="label" x="635" y="824" text-anchor="middle">② 单调 guards</text>
+    <text class="small" x="635" y="842" text-anchor="middle">拒绝不可翻案</text>
+
+    <path class="edge" d="M 710 828 L 780 828" marker-end="url(#arrow)"/>
+
+    <rect class="node process" x="780" y="800" width="150" height="56" rx="8"/>
+    <text class="label" x="855" y="824" text-anchor="middle">③ execute</text>
+    <text class="small" x="855" y="842" text-anchor="middle">超时/重试包装</text>
+
+    <path class="edge" d="M 930 828 L 980 828" marker-end="url(#arrow)"/>
+
+    <rect class="node neutral" x="60" y="900" width="150" height="56" rx="8"/>
+    <text class="label" x="135" y="924" text-anchor="middle">④ post-execute</text>
+    <text class="small" x="135" y="942" text-anchor="middle">结果校验→终结</text>
+
+    <path class="edge" d="M 210 928 L 340 928" marker-end="url(#arrow)"/>
+
+    <!-- 守卫拒绝 -->
+    <path class="edge" d="M 415 856 L 415 928" marker-end="url(#arrow)"/>
+    <text class="small" x="300" y="920">拒绝</text>
+    <rect class="node risk" x="340" y="900" width="150" height="56" rx="8"/>
+    <text class="label" x="415" y="920" text-anchor="middle">拒绝执行</text>
+    <text class="small" x="415" y="938" text-anchor="middle">记录原因</text>
+
+    <!-- 协作式取消 -->
+    <rect class="node external" x="620" y="900" width="220" height="56" rx="8"/>
+    <text class="label" x="730" y="920" text-anchor="middle">🛑 协作式取消</text>
+    <text class="small" x="730" y="938" text-anchor="middle">AbortSignal · body 前/后区分</text>
+
+    <path class="edge" d="M 855 928 L 930 928" marker-end="url(#arrow)"/>
+    <rect class="node risk" x="930" y="900" width="100" height="56" rx="8"/>
+    <text class="small" x="980" y="928" text-anchor="middle">防跑飞</text>
+
+    <!-- 阶段五 zone: 机制落地为代码 -->
+    <rect class="zone" x="30" y="1400" width="1020" height="160" rx="12"/>
+    <text class="small" x="46" y="1422">阶段五 · 机制落地为代码(图4样板:executor.py 406行 · 11/11 全绿)</text>
+
+    <rect class="node process" x="60" y="1440" width="180" height="56" rx="8"/>
+    <text class="label" x="150" y="1464" text-anchor="middle">🧱 guard 执行器</text>
+    <text class="small" x="150" y="1482" text-anchor="middle">红线/熔断固化成函数</text>
+
+    <path class="edge" d="M 240 1468 L 310 1468" marker-end="url(#arrow)"/>
+
+    <rect class="node process" x="310" y="1440" width="180" height="56" rx="8"/>
+    <text class="label" x="400" y="1464" text-anchor="middle">🔭 三层作用域</text>
+    <text class="small" x="400" y="1482" text-anchor="middle">全局/shadow/掩码交集</text>
+
+    <path class="edge" d="M 490 1468 L 560 1468" marker-end="url(#arrow)"/>
+
+    <rect class="node process" x="560" y="1440" width="180" height="56" rx="8"/>
+    <text class="label" x="650" y="1464" text-anchor="middle">🛑 取消三态</text>
+    <text class="small" x="650" y="1482" text-anchor="middle">BEFORE/ABORTED/TIMEOUT</text>
+
+    <path class="edge" d="M 740 1468 L 810 1468" marker-end="url(#arrow)"/>
+
+    <rect class="node ok" x="810" y="1440" width="220" height="56" rx="8"/>
+    <text class="label" x="920" y="1464" text-anchor="middle">✅ 落地验证 11/11</text>
+    <text class="small" x="920" y="1482" text-anchor="middle">可注入 handler · 不留半吊子</text>
+
+    <!-- 阶段四 zone -->
+    <rect class="zone" x="30" y="1180" width="1020" height="200" rx="12"/>
+    <text class="small" x="46" y="1202">阶段四 · 事务式收尾与交付(机制4:回滚 + 持久化)</text>
+
+    <rect class="node neutral" x="60" y="1220" width="180" height="56" rx="8"/>
+    <text class="label" x="150" y="1244" text-anchor="middle">目标达成?</text>
+    <text class="small" x="150" y="1262" text-anchor="middle">验证台账</text>
+
+    <path class="edge" d="M 150 1276 L 150 1320" marker-end="url(#arrow)"/>
+    <text class="small" x="162" y="1305">是</text>
+
+    <rect class="node ok" x="60" y="1315" width="260" height="50" rx="8"/>
+    <text class="label" x="190" y="1336" text-anchor="middle">✅ 交付:汇报老板 + 写记忆</text>
+    <text class="small" x="190" y="1353" text-anchor="middle">events.log · MEMORY.md</text>
+
+    <path class="edge" d="M 240 1248 L 400 1248" marker-end="url(#arrow)"/>
+    <text class="small" x="290" y="1240">否</text>
+
+    <rect class="node risk" x="400" y="1220" width="200" height="56" rx="8"/>
+    <text class="label" x="500" y="1244" text-anchor="middle">回滚 + 清理</text>
+    <text class="small" x="500" y="1262" text-anchor="middle">不留半成品</text>
+
+    <path class="edge" d="M 600 1248 L 700 1248" marker-end="url(#arrow)"/>
+    <rect class="node risk" x="700" y="1220" width="200" height="56" rx="8"/>
+    <text class="label" x="800" y="1244" text-anchor="middle">⏳ 修复重试 / 升级上报</text>
+    <text class="small" x="800" y="1262" text-anchor="middle">熔断3次 · 升级老板</text>
+  </svg>
+
+  <div class="notes">
+    <b>图例说明:</b>
+    <ul>
+      <li><b>第0层 · 插件化架构</b>:调度器=插件注册表(skills-db),运行时=插件运行时(OpenClaw+dsh),插件协议=技能→dsh-plugin 格式。模型适配器/工具/会话日志/agent loop 全部可替换。</li>
+      <li><b>机制1 · 工具执行守卫链</b>:pre-execute(允许/拒绝门)→ 单调 guards(拒绝不可翻案)→ execute(超时/重试包装)→ post-execute → 结果终结。拒绝即停,记录原因。</li>
+      <li><b>机制2 · 作用域注册</b>:全局/单-agent 三层工具可见性;重复名抛错,治理技能命名冲突,防覆盖、防越权。</li>
+      <li><b>机制3 · 协作式取消</b>:AbortSignal 贯穿执行体;取消发生在 body 前/后区分明确,防跑飞、防僵尸任务。</li>
+      <li><b>机制4 · 事务式生命周期</b>:会话 create 失败自动回滚,不残留半成品(代码层"不死鸟");事件日志 append-only 持久化,可回溯。</li>
+      <li><b>阶段五 · 机制→代码</b>:图4样板 executor.py 把 4 机制落成真代码(406行,11/11 全绿),还抓到 3 个真问题(作用域语义错乱/超时无法触发/需可注入handler)。我们照此样板落地自己的 guard 执行器。</li>
+    </ul>
+  </div>
+</main>

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "registry": "https://clawhub.ai",
+  "slug": "dragon-ppt-maker",
+  "installedVersion": "1.0.0",
+  "installedAt": 1786413948505,
+  "artifact": {
+    "kind": "archive",
+    "sha256": "0859e8405b534ff2f5ae0084902611904e9999ab0c14f3b0ddd414d0718a01cf",
+    "integrity": "sha256-CFnoQFtTT/L1rgCEkCYRkE6ZmasMFPOw3dQU0HGKAc8="
+  },
+  "skillFile": {
+    "path": "SKILL.md",
+    "sha256": "97e94024c56b79270c67a92a6b1147e83d5a8577ed93d303ca704adf091cf908"
+  }
+}

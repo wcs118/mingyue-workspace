@@ -1,0 +1,183 @@
+# Gate Protocol
+
+Gates aggregate upstream verdicts and route the flow. Gates do not dispatch subagents — the orchestrator executes gates directly using harness commands.
+
+## Procedure
+
+### Step 1 — Synthesize Upstream Verdicts
+
+Run the harness to compute the aggregate verdict:
+
+```bash
+opc-harness synthesize $SESSION_DIR --node {UPSTREAM_NODE_ID}
+```
+
+Output: `{ verdict, totals: { critical, warning, suggestion }, roles[], evalQualityGate?, evaluatorGuidance? }`
+
+**D2 Compound Eval Quality Gate (enforce by default):**
+The synthesize command stacks 11 defense layers per role (thinEval, noCodeRefs, lowUniqueContent, singleHeading, findingDensityLow, missingReasoning, missingFix, lineLengthVarianceLow, aspirationalClaims, changeScopeCoverage, invalidRefCount×2). If ≥3 layers trip on any role → `verdict = FAIL`. Pass `--no-strict` to downgrade to shadow mode (output `evalQualityGate.triggered=true` without changing verdict).
+
+**thinEval substance exemption:** Evals under 50 lines are exempt from thinEval if every finding has reasoning + fix + file ref.
+
+**--base ref validation:** Pass `--base <project-root>` to validate file:line references against the filesystem. Fabricated refs count as 2 layers in the compound gate. When `--base` is provided and git history is available, the changeScopeCoverage layer checks that the eval mentions ≥30% of the changed files. Note: `changeScopeCoverage` and `invalidRefCount` only activate when `--base` is provided and git is available — they are conditional layers.
+
+**changeScopeCoverage scope (`--change-commits`):** The set of "changed files" is scoped to the commits the flow actually **produced**, not a blind `git diff HEAD~1`. `finalize`/`advance` pass `--change-commits <csv>` from `flow-state.producedCommits` (recorded via `opc-harness record-commit`, see below). Behavior:
+- **Empty set** (`--change-commits` present but empty, i.e. the flow committed nothing yet — e.g. it reviewed a session-local artifact): changeScopeCoverage **skips cleanly**. This removes the structural false-positive where a blind `HEAD~1` diff mis-attributed unrelated parallel commits or could not see an uncommitted artifact.
+- **Non-empty set**: the layer diffs exactly those commits' files and still enforces the ≥30% coverage rule — the gate keeps biting on a genuine coverage gap.
+- **Flag absent** (`--change-commits` not passed at all): legacy `git diff HEAD~1` fallback is preserved for direct manual `synthesize --base` calls.
+
+**Recording produced commits:** After the orchestrator commits delivered code, it MUST record the commit so the gate can scope coverage to it:
+```bash
+opc-harness record-commit [--sha <sha>]   # defaults to HEAD of the project root
+```
+This appends the (dedup'd, full-length) sha to `flow-state.producedCommits`. Fail-closed: an invalid sha or missing `flow-state.json` is a hard error, not a silent skip.
+
+**Evaluator guidance (feedback loop):** When D2 triggers, the output includes `evaluatorGuidance` — a per-role object with `triggeredLayers` (which checks failed) and `hints` (actionable fix instructions). On ITERATE, the orchestrator SHOULD inject this guidance into the R2 evaluator prompt so the evaluator knows exactly what to fix.
+
+### Step 1.5 — Structured Result Check
+
+Before mechanical validation, the gate reads structured data from upstream artifacts. This catches failures that the verdict alone cannot express (e.g., a node can PASS at the orchestration level while its report contains test failures).
+
+**Artifact schema:** Upstream nodes (especially execute and build nodes) MAY write structured result files as part of their artifacts. These files are JSON objects containing any subset of the fields below. The artifact's `type` in the handshake must be `"report"` or `"test-result"` for this check to read it. The path in `artifacts[].path` is relative to the node directory.
+
+**Procedure:**
+
+1. Scan `$SESSION_DIR/nodes/*/handshake.json` for all upstream nodes in this gate's path
+2. For each handshake, inspect the `artifacts[]` array. For artifacts with type `report` or `test-result`, read the referenced file
+3. **Error handling:** If an artifact file is missing, unreadable, or contains malformed JSON → treat as **FAIL** with reason `"artifact {path} unreadable — fail-closed"`. Structured checks are fail-closed: broken data = gate FAIL, not silent pass.
+4. Parse these structured fields (if present in the artifact JSON). **Type coercion:** numeric fields may appear as strings (e.g., `"3"` vs `3`); coerce to integer before comparison. If coercion fails (non-numeric string) → treat as 0 and log a warning.
+   - `test_fail_count` — number of failed tests
+   - `dead_test_count` — number of dead/unreachable tests
+   - `p0_count` — number of unresolved P0 issues
+   - `sync_check_status` — sync verification result (`"PASS"` or `"FAIL"`)
+5. Apply hard FAIL rules — any single violation triggers gate FAIL:
+
+| Field | Condition | Gate action | Reason string |
+|-------|-----------|-------------|---------------|
+| `test_fail_count` | `> 0` | **FAIL** | `"{N} test(s) failed"` |
+| `dead_test_count` | `> 0` | **FAIL** | `"{N} dead test(s) detected"` |
+| `p0_count` | `> 0` | **FAIL** | `"{N} P0 issue(s) unresolved"` |
+| `sync_check_status` | `== "FAIL"` | **FAIL** | `"sync-check failed"` |
+
+6. If multiple fields trigger, concatenate all reasons (semicolon-separated) into one FAIL verdict
+7. If no artifacts with type `report` or `test-result` exist in any upstream handshake, this step is a no-op (backward compatible — older sessions without structured data pass through)
+
+**This check applies to ALL gate nodes** (gate-test, gate-acceptance, gate-audit, gate-e2e, gate-final), not just gate-final. The principle: if any upstream node produced structured evidence of failure, the gate must catch it regardless of the node-level verdict.
+
+**Override:** The orchestrator MUST NOT skip or relax these rules. If structured data says tests failed, the gate FAILs — even if the upstream node verdict was PASS. `/opc pass` (explicit user override) also runs Step 1.5 — it is NOT a bypass. If Step 1.5 detects failing artifacts, `/opc pass` is rejected.
+
+### Step 2 — Mechanical Validation
+
+Before accepting the synthesized verdict, verify upstream quality:
+
+- Every finding must have a severity emoji (🔴 🟡 🔵)
+- Every 🔴 critical finding must have a `file:line` reference
+- Every 🔴 critical finding must have a `→ Fix:` suggestion
+- Flag hedging language (might, could, potentially) — challenge or downgrade
+
+If mechanical checks fail, re-dispatch the upstream evaluator with a reminder. Max 2 re-dispatch attempts — after that, accept with ⚠️ annotation.
+
+### Step 3 — Route Decision
+
+Use the harness to determine the next node:
+
+```bash
+opc-harness route --node {GATE_ID} --verdict {VERDICT} --flow {FLOW_TEMPLATE}
+```
+
+Output: `{ next: "<nodeId>" | null, valid: true }`
+
+- `next = null` means the flow is complete.
+- `valid = false` means the gate or verdict is not in the flow template — surface error to user.
+
+**Do not determine the next node yourself.** Always use the `route` command.
+
+### Step 4 — Transition
+
+Execute the transition (also writes this gate's handshake.json automatically):
+
+```bash
+opc-harness transition --from {GATE_ID} --to {NEXT_NODE} --verdict {VERDICT} --flow {FLOW_TEMPLATE} --dir $SESSION_DIR
+```
+
+Output: `{ allowed: true/false, reason, next, state }`
+
+- `allowed = true` → proceed to next node
+- `allowed = false` → cycle limit reached. Surface to user with escape options:
+  - `/opc pass` — force PASS, advance to the PASS edge target
+  - `/opc stop` — terminate flow, preserve state
+  - `/opc goto <node>` — manual override (still checked against cycle limits)
+
+The `transition` command automatically:
+1. Validates the edge exists in the flow template
+2. Checks cycle limits (maxLoopsPerEdge, maxTotalSteps, maxNodeReentry)
+3. Writes this gate's `$SESSION_DIR/nodes/{GATE_ID}/handshake.json`
+4. Updates `$SESSION_DIR/flow-state.json`
+
+### Step 5 — Findings Disposition
+
+After routing, handle unresolved findings. **Findings that are not fixed in the current cycle MUST be tracked — they cannot be "acknowledged" and forgotten.**
+
+| Verdict | 🔴 Critical | 🟡 Warning | 🔵 Suggestion |
+|---------|-------------|------------|---------------|
+| FAIL | Must fix before re-gate | — | — |
+| ITERATE | Must fix before re-gate | Append to `$SESSION_DIR/backlog.md` if not fixing now | Optional |
+| PASS | N/A (no 🔴 if PASS) | Append to `$SESSION_DIR/backlog.md` | Drop or append |
+
+**Backlog append format:**
+```markdown
+- [ ] {emoji} [{source node}] {finding summary} — {file:line if applicable}
+```
+
+**Devil's Advocate findings** receive special treatment:
+- Product-level concerns (design validity, algorithm effectiveness, business assumptions) → always 🟡 minimum, always tracked in backlog
+- These are explicitly NOT dismissible with "acknowledged but not code-blocking"
+- If the orchestrator disagrees with a devil's advocate finding, it must write a **counter-argument** in the backlog entry, not simply omit it
+
+Create `$SESSION_DIR/backlog.md` if it doesn't exist. Append, never overwrite.
+
+### Step 6 — User Notification
+
+Always inform the user of the gate outcome:
+
+- **Loopback:** `🔄 Loop {N}/{MAX}: {reason}, returning to {target}`
+- **Pass:** `✅ {gate} passed, proceeding to {next}`
+- **Done:** `🎉 Flow complete.`
+- **Blocked:** `⛔ Cycle limit reached at {gate}. Use /opc pass, /opc stop, or /opc goto <node>.`
+
+## Anti-Patterns
+
+- ❌ Overriding the synthesized verdict with your own judgment
+- ❌ Determining the next node by reading SKILL.md tables — use `opc-harness route`
+- ❌ Writing gate handshake.json manually — `transition` does this
+- ❌ Continuing after `allowed: false` without user consent
+- ❌ "Acknowledging" a 🟡 finding without writing it to backlog.md — this is how findings get lost
+- ❌ Dismissing devil's advocate product concerns as "not code-blocking" without tracking them
+
+## Conflict of Interest — Builder as Orchestrator
+
+When the orchestrator also performed the build (same session, same agent):
+
+1. **The orchestrator MUST NOT override gate verdicts.** Specifically:
+   - ITERATE verdict → orchestrator cannot rationalize warnings as "pre-existing" or "acceptable"
+   - FAIL verdict → orchestrator cannot downgrade to ITERATE
+   - Only the USER can override verdicts when conflict-of-interest applies
+
+2. **Detection**: If the current session's build node was executed by the orchestrator (not a subagent in a worktree), conflict-of-interest is assumed.
+
+3. **Escalation**: When conflict-of-interest is detected and verdict is not PASS:
+   - Show the user: verdict, all findings summary, and the specific warnings
+   - Ask: "Gate verdict is {VERDICT}. As builder, I have a conflict of interest. Accept findings and iterate, or override? [iterate/override]"
+   - Do NOT pre-fill the answer or suggest overriding
+
+4. **Audit trail**: Any user override must be logged in progress.md: "⚠️ User override: {verdict} → PASS (conflict-of-interest acknowledged)"
+
+## Skeptic-Owner Authority
+
+When multiple reviewers disagree on verdict, **skeptic-owner's verdict takes precedence**. Skeptic-owner is the user's representative in the pipeline — its job is to verify the output matches what was actually asked for.
+
+Concretely:
+- If skeptic-owner says FAIL and others say PASS → treat as FAIL
+- If skeptic-owner says ITERATE and others say PASS → treat as ITERATE
+- If skeptic-owner says PASS and others say ITERATE → the orchestrator MAY escalate to user, but skeptic-owner's PASS carries more weight than other roles' ITERATE
+- The orchestrator MUST NOT dismiss or downgrade skeptic-owner findings under any rationale

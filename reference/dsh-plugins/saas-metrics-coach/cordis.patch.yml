@@ -1,0 +1,12 @@
+# saas-metrics-coach — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/saas-metrics-coach/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/saas-metrics-coach   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/saas-metrics-coach)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/saas-metrics-coach/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-saas-metrics-coach
+      name: '@deepseek-ai/dsh-skill-saas-metrics-coach'
+      config:
+        skill: 'saas-metrics-coach'
+        description: 'name: saas-metrics-coach'
+        source: skills/saas-metrics-coach/SKILL.md

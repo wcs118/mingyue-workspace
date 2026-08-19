@@ -1,0 +1,12 @@
+# receiving-code-review — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/receiving-code-review/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/receiving-code-review   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/receiving-code-review)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/receiving-code-review/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-receiving-code-review
+      name: '@deepseek-ai/dsh-skill-receiving-code-review'
+      config:
+        skill: 'receiving-code-review'
+        description: 'name: receiving-code-review'
+        source: skills/receiving-code-review/SKILL.md

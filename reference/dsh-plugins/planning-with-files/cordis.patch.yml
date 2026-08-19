@@ -1,0 +1,12 @@
+# planning-with-files — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/planning-with-files/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/planning-with-files   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/planning-with-files)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/planning-with-files/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-planning-with-files
+      name: '@deepseek-ai/dsh-skill-planning-with-files'
+      config:
+        skill: 'planning-with-files'
+        description: 'name: planning-with-files'
+        source: skills/planning-with-files/SKILL.md

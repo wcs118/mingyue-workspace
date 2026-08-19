@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "skills": {
+    "dragon-ppt-maker": {
+      "version": "1.0.0",
+      "installedAt": 1786413948505,
+      "registry": "https://clawhub.ai",
+      "artifact": {
+        "kind": "archive",
+        "sha256": "0859e8405b534ff2f5ae0084902611904e9999ab0c14f3b0ddd414d0718a01cf",
+        "integrity": "sha256-CFnoQFtTT/L1rgCEkCYRkE6ZmasMFPOw3dQU0HGKAc8="
+      },
+      "skillFile": {
+        "path": "SKILL.md",
+        "sha256": "97e94024c56b79270c67a92a6b1147e83d5a8577ed93d303ca704adf091cf908"
+      },
+      "verification": {
+        "schema": "clawhub.skill.verify.v1",
+        "ok": true,
+        "decision": "pass",
+        "reasons": [],
+        "card": {
+          "available": true,
+          "path": "skill-card.md",
+          "url": "https://wry-manatee-359.convex.site/api/v1/skills/dragon-ppt-maker/card?ownerHandle=dragon015&version=1.0.0",
+          "sha256": "1d11ef12d6210ee42ee77240db6af8cd676fbebebbff9d5a8f382c55177a6724",
+          "size": 2275,
+          "contentType": "text/markdown; charset=utf-8"
+        },
+        "artifact": {
+          "sourceFingerprint": "e15fbabc0e9833415e814f6ee640c425b0513f9d41ee950593ae6105f453bf59",
+          "bundleFingerprints": [
+            "06b8fa29b7c02f3243b369c58f813677871ee6c38bc922062d476df03d0e292b"
+          ],
+          "files": [
+            {
+              "path": "ppt_maker.py",
+              "size": 23471,
+              "sha256": "a1528d45e75b15850f6424d491c7be403db1b287235f9706659ecd33683a0a62",
+              "contentType": "text/plain"
+            },
+            {
+              "path": "SKILL.md",
+              "size": 1727,
+              "sha256": "97e94024c56b79270c67a92a6b1147e83d5a8577ed93d303ca704adf091cf908",
+              "contentType": "text/markdown"
+            }
+          ]
+        },
+        "provenance": {
+          "source": "unavailable",
+          "reason": "No server-resolved GitHub import provenance is stored for this version."
+        },
+        "security": {
+          "status": "clean",
+          "passed": true,
+          "rawStatus": "clean",
+          "verdict": "benign",
+          "confidence": "high",
+          "summary": "This is a straightforward PowerPoint-generation skill with ordinary local file reads and writes for creating presentations.",
+          "model": "gpt-5.5",
+          "checkedAt": 1779969175777,
+          "signals": {
+            "staticScan": {
+              "status": "clean",
+              "rawStatus": "clean",
+              "reasonCodes": [],
+              "summary": "No suspicious patterns detected.",
+              "engineVersion": "v2.4.5",
+              "checkedAt": 1777525493395
+            },
+            "virusTotal": {
+              "status": "suspicious",
+              "rawStatus": "suspicious",
+              "verdict": "suspicious",
+              "analysis": "Type: OpenClaw Skill\nName: dragon-ppt-maker\nVersion: 1.0.0\n\nThe `ppt_maker.py` script is suspicious due to an arbitrary file write vulnerability. The `--output` command-line argument is directly used as the filename for `prs.save()`, allowing a user or an agent to specify an arbitrary file path (e.g., via path traversal) to write the generated PPTX file to any location on the file system where the process has write permissions. While the content written is a PPTX file, this lack of input sanitization for file paths is a significant security flaw.",
+              "source": "palm",
+              "scanner": "code_insight",
+              "engineStats": {
+                "harmless": 0,
+                "malicious": 0,
+                "suspicious": 0,
+                "undetected": 66
+              },
+              "checkedAt": 1779168254247
+            },
+            "skillSpector": {
+              "status": "clean",
+              "rawStatus": "clean",
+              "score": 13,
+              "severity": "LOW",
+              "recommendation": "SAFE",
+              "issueCount": 1,
+              "scannerVersion": "2.0.0",
+              "summary": null,
+              "error": null,
+              "checkedAt": 1779969138993
+            },
+            "dependencyRegistry": null
+          }
+        },
+        "signature": {
+          "status": "unsigned"
+        }
+      }
+    }
+  }
+}

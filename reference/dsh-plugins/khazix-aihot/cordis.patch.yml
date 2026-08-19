@@ -1,0 +1,12 @@
+# khazix-aihot — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/khazix-aihot/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/khazix-aihot   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/khazix-aihot)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/khazix-aihot/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-khazix-aihot
+      name: '@deepseek-ai/dsh-skill-khazix-aihot'
+      config:
+        skill: 'khazix-aihot'
+        description: 'description: 查询 AIHOT 的中文 AI 资讯、精选、当前热点和日报。用户询问今天或最近的 AI 新闻、AI 圈动态、大模型或产品发布、OpenAI／Anthropic／Google 最新消息、AI 论文、AI 日报、AIH'
+        source: skills/khazix-aihot/SKILL.md

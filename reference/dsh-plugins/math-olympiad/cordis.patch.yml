@@ -1,0 +1,12 @@
+# math-olympiad — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/math-olympiad/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/math-olympiad   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/math-olympiad)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/math-olympiad/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-math-olympiad
+      name: '@deepseek-ai/dsh-skill-math-olympiad'
+      config:
+        skill: 'math-olympiad'
+        description: 'name: math-olympiad'
+        source: skills/math-olympiad/SKILL.md

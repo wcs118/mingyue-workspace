@@ -1,0 +1,9 @@
+# webvuln (dsh 插件)
+
+由 skill-to-plugin.py 自动生成。
+
+- 技能来源: `skills/webvuln/SKILL.md`
+- npm 包名: `@deepseek-ai/dsh-skill-webvuln`
+- 插件补丁: `cordis.patch.yml`
+- 安装: `cd /opt/dsh && dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/webvuln`
+- 接入: `dsh --profile headless --patch reference/dsh-plugins/webvuln/cordis.patch.yml "任务"`

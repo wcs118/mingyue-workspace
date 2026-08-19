@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.DS_Store
+.omc/
+.omx/
+tests/local-terms.txt
+# Impeccable design tooling, reinstalled on demand with `npx impeccable install`.
+# It reviews the dashboard; it is not part of the published skill suite.
+.github/agents/
+.github/hooks/
+.github/skills/
+maintainers/evals/
+.coverage
+# Scratch space for local showcase workspaces: real creator projects, opened in
+# the dashboard, carrying generated media and provider responses. Nothing here
+# ships. The published excerpt chain lives in examples/excerpt-chain/.
+/demo/

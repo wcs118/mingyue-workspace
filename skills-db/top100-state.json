@@ -1,0 +1,507 @@
+{
+  "schemaVersion": "1.0",
+  "generated": "2026-08-19T12:04:16",
+  "scope": "top-100-skills-repos",
+  "repos": {
+    "obra/superpowers": {
+      "stars": 273761,
+      "updated_at": "2026-08-19",
+      "description": "An agentic skills framework & software development methodology that works."
+    },
+    "Snailclimb/JavaGuide": {
+      "stars": 157874,
+      "updated_at": "2026-08-19",
+      "description": "Java 面试 & 后端通用面试指南，覆盖计算机基础、数据库、分布式、高并发、系统设计与 AI 应用开发"
+    },
+    "langgenius/dify": {
+      "stars": 152858,
+      "updated_at": "2026-08-19",
+      "description": "Build Agentic workflows, RAG pipelines, with rich AI model and tool support on one collaborative workspace. Deploy on cl"
+    },
+    "farion1231/cc-switch": {
+      "stars": 128136,
+      "updated_at": "2026-08-19",
+      "description": "A cross-platform desktop All-in-One assistant for Claude Code, Codex, OpenCode, OpenClaw, Grok Build & Hermes Agent. Onl"
+    },
+    "Graphify-Labs/graphify": {
+      "stars": 107982,
+      "updated_at": "2026-08-19",
+      "description": "Turn any codebase, with its docs, SQL schemas, configs, and PDFs, into a queryable knowledge graph. A /graphify skill fo"
+    },
+    "thedotmack/claude-mem": {
+      "stars": 91179,
+      "updated_at": "2026-08-19",
+      "description": "Persistent Context Across Sessions for Every Agent –  Captures everything your agent does during sessions, compresses it"
+    },
+    "ruvnet/RuView": {
+      "stars": 90825,
+      "updated_at": "2026-08-19",
+      "description": "π RuView turns commodity WiFi signals into real-time spatial intelligence, vital sign monitoring, and presence detection"
+    },
+    "addyosmani/agent-skills": {
+      "stars": 88419,
+      "updated_at": "2026-08-19",
+      "description": "Production-grade engineering skills for AI coding agents."
+    },
+    "lobehub/lobehub": {
+      "stars": 81817,
+      "updated_at": "2026-08-19",
+      "description": "🤯 LobeHub is your Chief Agent Operator, organizing your agents into 7×24 operations by hiring, scheduling, and reporting"
+    },
+    "Egonex-AI/Understand-Anything": {
+      "stars": 79757,
+      "updated_at": "2026-08-19",
+      "description": "Graphs that teach > graphs that impress. Turn any code into an interactive knowledge graph you can explore, search, and "
+    },
+    "Leonxlnx/taste-skill": {
+      "stars": 77828,
+      "updated_at": "2026-08-19",
+      "description": "Taste-Skill - gives your AI good taste. stops the AI from generating boring, generic slop "
+    },
+    "ruvnet/ruflo": {
+      "stars": 68246,
+      "updated_at": "2026-08-19",
+      "description": "🌊 The original agent meta-harness. Deploy intelligent multi-player swarms, coordinate autonomous workflows, and build co"
+    },
+    "code-yeongyu/oh-my-openagent": {
+      "stars": 68049,
+      "updated_at": "2026-08-19",
+      "description": "omo/lazycodex: The coding agent for tokenmaxxers;the one and only agent harness for complex codebases. For your Codex, f"
+    },
+    "CherryHQ/cherry-studio": {
+      "stars": 50740,
+      "updated_at": "2026-08-19",
+      "description": "AI productivity studio with smart chat, autonomous agents, and 300+ assistants. Unified access to frontier LLMs"
+    },
+    "jeecgboot/JeecgBoot": {
+      "stars": 47419,
+      "updated_at": "2026-08-19",
+      "description": "【低代码迈入v2.0时代，一句话即可生成整个系统】企业级AI低代码平台，一键生成前后端代码甚至整个系统。 AI Skills 一句话画流程、设计表单、生成报表、大屏。内置 AI应用平台涵盖：AI聊天、知识库、流程编排、MCP插件等，兼容主流"
+    },
+    "kepano/obsidian-skills": {
+      "stars": 46710,
+      "updated_at": "2026-08-19",
+      "description": "Agent skills for Obsidian. Teach your agent to use Obsidian CLI and open formats including Markdown, Bases, JSON Canvas."
+    },
+    "zhayujie/CowAgent": {
+      "stars": 46558,
+      "updated_at": "2026-08-19",
+      "description": "Open-source super AI assistant & Agent Harness. Plans tasks, runs tools and skills, self-evolves with memory and knowled"
+    },
+    "wshobson/agents": {
+      "stars": 38909,
+      "updated_at": "2026-08-19",
+      "description": "Multi-harness agentic plugin marketplace for Claude Code, Codex, Cursor, OpenCode, GitHub Copilot, and Google Antigravit"
+    },
+    "agentscope-ai/QwenPaw": {
+      "stars": 34006,
+      "updated_at": "2026-08-19",
+      "description": "Your Personal AI Assistant; easy to install, deploy on your own machine or on the cloud; supports multiple chat apps wit"
+    },
+    "K-Dense-AI/scientific-agent-skills": {
+      "stars": 33845,
+      "updated_at": "2026-08-19",
+      "description": "Turn any AI agent into an AI Scientist. The #1 Agent Skills library for science, used by 175,000+ scientists worldwide. "
+    },
+    "anthropics/claude-plugins-official": {
+      "stars": 33680,
+      "updated_at": "2026-08-19",
+      "description": "Official, Anthropic-managed directory of high quality Claude Code Plugins."
+    },
+    "alibaba/nacos": {
+      "stars": 33280,
+      "updated_at": "2026-08-19",
+      "description": "an easy-to-use dynamic service discovery, configuration and service management platform for building AI cloud native app"
+    },
+    "JCodesMore/ai-website-cloner-template": {
+      "stars": 32415,
+      "updated_at": "2026-08-19",
+      "description": "Clone any website with one command using AI coding agents"
+    },
+    "iOfficeAI/AionUi": {
+      "stars": 32098,
+      "updated_at": "2026-08-19",
+      "description": "Open-source 24/7 Cowork app for OpenClaw, Hermes, Claude Code, Codex, OpenCode and 20+ more CLI Agent | Customize your a"
+    },
+    "nanocoai/nanoclaw": {
+      "stars": 30546,
+      "updated_at": "2026-08-19",
+      "description": "A lightweight alternative to OpenClaw that runs in containers for security. Connects to WhatsApp, Telegram, Slack, Disco"
+    },
+    "VoltAgent/awesome-agent-skills": {
+      "stars": 30514,
+      "updated_at": "2026-08-19",
+      "description": "A curated collection of 1000+ agent skills from official dev teams and the community, compatible with Claude Code, Codex"
+    },
+    "Ebazhanov/linkedin-skill-assessments-quizzes": {
+      "stars": 28811,
+      "updated_at": "2026-08-19",
+      "description": "Full reference of LinkedIn answers 2024 for skill assessments (aws-lambda, rest-api, javascript, react, git, html, jquer"
+    },
+    "iOfficeAI/OfficeCLI": {
+      "stars": 28762,
+      "updated_at": "2026-08-19",
+      "description": "OfficeCLI is the first and best Office suite  purpose-built for AI agents to read, edit, and automate Word, Excel, and P"
+    },
+    "OthmanAdi/planning-with-files": {
+      "stars": 26239,
+      "updated_at": "2026-08-19",
+      "description": "Persistent file-based planning for AI coding agents and long-running tasks. Crash-proof markdown plans, session recovery"
+    },
+    "JimLiu/baoyu-skills": {
+      "stars": 25136,
+      "updated_at": "2026-08-19",
+      "description": ""
+    },
+    "flipped-aurora/gin-vue-admin": {
+      "stars": 24950,
+      "updated_at": "2026-08-18",
+      "description": "🚀Vite+Vue3+Gin拥有AI辅助的基础开发平台，企业级业务AI+开发解决方案，内置mcp辅助服务，内置skills管理，支持TS和JS混用。它集成了JWT鉴权、权限管理、动态路由、显隐可控组件、分页封装、多点登录拦截、资源权限、上传"
+    },
+    "alirezarezvani/claude-skills": {
+      "stars": 24634,
+      "updated_at": "2026-08-19",
+      "description": "345 Claude Code skills & agent skills & plugins (30+ Agents, 70+ custom commands, 330+ skills, customizable references, "
+    },
+    "op7418/guizang-ppt-skill": {
+      "stars": 24373,
+      "updated_at": "2026-08-19",
+      "description": "AI-agent Skill for generating polished HTML slide decks: editorial magazine and Swiss layouts, image prompts, social cov"
+    },
+    "ayghri/i-have-adhd": {
+      "stars": 22029,
+      "updated_at": "2026-08-19",
+      "description": "A skill to stop your coding agent from burying the answer. ADHD-friendly output."
+    },
+    "mksglu/context-mode": {
+      "stars": 19967,
+      "updated_at": "2026-08-19",
+      "description": "Context window optimization for AI coding agents. Sandboxes tool output (98% reduction), persists session memory, and   "
+    },
+    "KKKKhazix/khazix-skills": {
+      "stars": 19828,
+      "updated_at": "2026-08-19",
+      "description": "数字生命卡兹克开源的 AI Skills 合集 | Agent Skills: leader（帮你定义目标）, neat-freak 洁癖, hv-analysis, khazix-writer & more — Claude Code, "
+    },
+    "teng-lin/notebooklm-py": {
+      "stars": 18793,
+      "updated_at": "2026-08-19",
+      "description": "Unofficial Python API and agentic skill for Google Gemini Notebook. Full programmatic access to NotebookLM's features—in"
+    },
+    "google/skills": {
+      "stars": 18483,
+      "updated_at": "2026-08-19",
+      "description": "Agent Skills for Google products and technologies"
+    },
+    "kubesphere/kubesphere": {
+      "stars": 17027,
+      "updated_at": "2026-08-19",
+      "description": "The container platform tailored for Kubernetes multi-cloud, datacenter, and edge management ⎈ 🖥 ☁️"
+    },
+    "composio-community/awesome-codex-skills": {
+      "stars": 15918,
+      "updated_at": "2026-08-19",
+      "description": "A curated list of practical Codex skills for automating workflows across the Codex CLI and API."
+    },
+    "yusufkaraaslan/Skill_Seekers": {
+      "stars": 14781,
+      "updated_at": "2026-08-19",
+      "description": "Convert documentation websites, GitHub repositories, and PDFs into Claude AI skills with automatic conflict detection"
+    },
+    "travisvn/awesome-claude-skills": {
+      "stars": 14717,
+      "updated_at": "2026-08-19",
+      "description": "A curated list of awesome Claude Skills, resources, and tools for customizing Claude AI workflows — particularly Claude "
+    },
+    "NevaMind-AI/memU": {
+      "stars": 14320,
+      "updated_at": "2026-08-19",
+      "description": "Personal memory across agents"
+    },
+    "EverMind-AI/EverOS": {
+      "stars": 12157,
+      "updated_at": "2026-08-19",
+      "description": "One portable memory layer for every AI agent: local-first, Markdown-native, user-owned, and self-evolving across apps, t"
+    },
+    "citrolabs/ego-lite": {
+      "stars": 11895,
+      "updated_at": "2026-08-19",
+      "description": "The fastest browser for AI agents to run browser automation, built for sharing your logged-in browser state with your AI"
+    },
+    "trimstray/test-your-sysadmin-skills": {
+      "stars": 11834,
+      "updated_at": "2026-08-19",
+      "description": "A collection of Linux Sysadmin Test Questions and Answers. Test your knowledge and skills in different fields with these"
+    },
+    "Orchestra-Research/AI-Research-SKILLs": {
+      "stars": 11818,
+      "updated_at": "2026-08-19",
+      "description": "Comprehensive open-source library of AI research and engineering skills for any AI model. Package the skills and your cl"
+    },
+    "nidhinjs/prompt-master": {
+      "stars": 11391,
+      "updated_at": "2026-08-19",
+      "description": "A Claude skill that writes the accurate prompts for any AI tool. Zero tokens or credits wasted. Full context and memory "
+    },
+    "freestylefly/awesome-gpt-image-2": {
+      "stars": 11299,
+      "updated_at": "2026-08-19",
+      "description": "Prompt as Code | GPT-Image2 工业级提示词引擎与模板库，470+ 个案例逆向工程，20+ 套工业级模板，并提炼出Skills，持续更新中"
+    },
+    "Jeffallan/claude-skills": {
+      "stars": 11065,
+      "updated_at": "2026-08-19",
+      "description": "66 Specialized Skills for Full-Stack Developers. Transform Claude Code into your expert pair programmer."
+    },
+    "MemTensor/MemOS": {
+      "stars": 10774,
+      "updated_at": "2026-08-19",
+      "description": "Self-evolving memory OS for LLM & AI Agents: ultra-persistent memory, hybrid-retrieval, and cross-task skill reuse, with"
+    },
+    "mcp-use/mcp-use": {
+      "stars": 10501,
+      "updated_at": "2026-08-19",
+      "description": "The fullstack MCP framework to develop MCP Apps for ChatGPT / Claude & MCP Servers for AI Agents."
+    },
+    "ConardLi/garden-skills": {
+      "stars": 10416,
+      "updated_at": "2026-08-19",
+      "description": "ConardLi's open-source Skills collection, featuring web design, knowledge retrieval, image generation, and more."
+    },
+    "Untrivial-ai/agent-orchestrator": {
+      "stars": 9626,
+      "updated_at": "2026-08-19",
+      "description": "Agent IDE that enables you to manage fleets of coding agents. It comes with an agentic orchestrator that plans tasks, sp"
+    },
+    "olistic/warriorjs": {
+      "stars": 9534,
+      "updated_at": "2026-08-18",
+      "description": "🏰 An exciting game of programming and Artificial Intelligence"
+    },
+    "EvoMap/evolver": {
+      "stars": 8979,
+      "updated_at": "2026-08-19",
+      "description": "The GEP-powered self-evolving engine for AI agents. Auditable evolution with Genes, Capsules, and Events. | evomap.ai"
+    },
+    "nexu-io/html-anything": {
+      "stars": 8339,
+      "updated_at": "2026-08-19",
+      "description": "✨ The agentic HTML editor — your local AI agent writes the HTML, you ship it. 🚀 75 Skills × 9 Surfaces (magazine · deck "
+    },
+    "backnotprop/plannotator": {
+      "stars": 7891,
+      "updated_at": "2026-08-19",
+      "description": "Annotate and review coding agent plans and code diffs visually, share with your team, send feedback to agents with one c"
+    },
+    "Agents365-ai/drawio-skill": {
+      "stars": 7778,
+      "updated_at": "2026-08-19",
+      "description": "Generate draw.io diagrams from natural language — 11 presets (UML, SysML/MBSE, BPMN, network, C4…), 36 tools: codebase/C"
+    },
+    "jnMetaCode/superpowers-zh": {
+      "stars": 7726,
+      "updated_at": "2026-08-19",
+      "description": "🦸 AI 编程超能力 · 中文增强版 — superpowers（116k+ ⭐）完整汉化 + 6 个中国原创 skills，让 Claude Code / Copilot CLI / Hermes Agent / Cursor / Win"
+    },
+    "cassidoo/getting-a-gig": {
+      "stars": 7719,
+      "updated_at": "2026-08-16",
+      "description": "Guide for getting a gig as a tech student."
+    },
+    "refly-ai/refly": {
+      "stars": 7490,
+      "updated_at": "2026-08-18",
+      "description": "The first open-source agent skills builder. Define skills by vibe workflow, run on Claude Code, Cursor, Codex & more. Bu"
+    },
+    "ibelick/ui-skills": {
+      "stars": 7302,
+      "updated_at": "2026-08-19",
+      "description": "Skills for Design Engineers"
+    },
+    "tw93/Waza": {
+      "stars": 6876,
+      "updated_at": "2026-08-19",
+      "description": "🥷 Engineering habits you already know, turned into skills Claude can run."
+    },
+    "android/skills": {
+      "stars": 6823,
+      "updated_at": "2026-08-19",
+      "description": ""
+    },
+    "sourcerer-io/sourcerer-app": {
+      "stars": 6733,
+      "updated_at": "2026-08-15",
+      "description": "🦄 Sourcerer app makes a visual profile from your GitHub and git repositories."
+    },
+    "opensquilla/opensquilla": {
+      "stars": 6610,
+      "updated_at": "2026-08-19",
+      "description": "OpenSquilla — Token-Efficient AI Agent with same budget, higher intelligence density"
+    },
+    "MycroftAI/mycroft-core": {
+      "stars": 6609,
+      "updated_at": "2026-08-09",
+      "description": "Mycroft Core, the Mycroft Artificial Intelligence platform. "
+    },
+    "SawyerHood/dev-browser": {
+      "stars": 6551,
+      "updated_at": "2026-08-19",
+      "description": "A Claude Skill to give your agent the ability to use a web browser"
+    },
+    "deanpeters/Product-Manager-Skills": {
+      "stars": 6534,
+      "updated_at": "2026-08-19",
+      "description": "Product Management skills framework built on battle-tested methods for Claude Code, Cowork, Codex, and AI agents."
+    },
+    "eastlakeside/interpy-zh": {
+      "stars": 6469,
+      "updated_at": "2026-08-17",
+      "description": "📘《Python进阶》（Intermediate Python - Chinese Version）"
+    },
+    "ParthJadhav/app-store-screenshots": {
+      "stars": 6410,
+      "updated_at": "2026-08-19",
+      "description": "end to end app store screenshot creation using AI"
+    },
+    "Sylinko/Everywhere": {
+      "stars": 6243,
+      "updated_at": "2026-08-19",
+      "description": "On-screen aware AI assistant for your desktop. Uses current app context, multiple LLMs, and MCP tools to help you act ac"
+    },
+    "ikaijua/Awesome-AITools": {
+      "stars": 6140,
+      "updated_at": "2026-08-18",
+      "description": "Collection of AI-related utilities. Welcome to submit pull requests /收藏AI相关的实用工具，欢迎提交pull requests"
+    },
+    "kucherenko/jscpd": {
+      "stars": 6019,
+      "updated_at": "2026-08-19",
+      "description": "Copy/paste detector for programming source code, supports 223 formats. AI-ready with token-efficient reporter, skill and"
+    },
+    "antfu/skills": {
+      "stars": 5771,
+      "updated_at": "2026-08-19",
+      "description": "Anthony Fu's curated collection of agent skills."
+    },
+    "worldwonderer/oh-story-claudecode": {
+      "stars": 5766,
+      "updated_at": "2026-08-19",
+      "description": "网文/小说写作 skill 包，覆盖长篇与短篇网络小说的扫榜、拆文、写作、去AI味、封面图全流程 | An all-in-one skill pack for long- and short-form web fiction."
+    },
+    "HKUSTDial/Supervisor-Skills": {
+      "stars": 5705,
+      "updated_at": "2026-08-19",
+      "description": "将博导十年科研经验炼化为可直接调用的 AI 技能。从 Idea 构思到论文投稿，你的 AI 科研副导师。"
+    },
+    "anysearch-ai/anysearch-skill": {
+      "stars": 5692,
+      "updated_at": "2026-08-19",
+      "description": "Unified real-time search engine skill for AI agents. Supports general web search, vertical domain search, parallel batch"
+    },
+    "WenyuChiou/awesome-agentic-ai-zh": {
+      "stars": 5660,
+      "updated_at": "2026-08-19",
+      "description": "A trilingual (繁中 / English / 简中) learning roadmap for agentic AI: from LLM basics to multi-agent systems, with 240+ cura"
+    },
+    "gosom/google-maps-scraper": {
+      "stars": 5553,
+      "updated_at": "2026-08-19",
+      "description": "scrape data  from Google Maps. Extracts data such as the name, address, phone number, website URL, rating,  reviews numb"
+    },
+    "htdt/godogen": {
+      "stars": 5499,
+      "updated_at": "2026-08-19",
+      "description": "Autonomous game development for Godot, Bevy, and Babylon.js with Claude Code and Codex"
+    },
+    "anbeime/skill": {
+      "stars": 5486,
+      "updated_at": "2026-08-19",
+      "description": "收录最全、更新最快的技能Skills 商店，涵盖文档处理、内容创作、编程开发、机器学习、自动化工作流等多个领域的 416 精选技能包。所有技能已打包完成，可直接安装使用！ 该商店中自动抓取了 Github 上的所有的 Skills 项目，并"
+    },
+    "Vincentwei1021/video-shotcraft": {
+      "stars": 5434,
+      "updated_at": "2026-08-19",
+      "description": "AI video skill for Claude Code & Codex — cinematic product videos with Remotion: 152 shot recipe cards, 209 motion previ"
+    },
+    "0xNyk/awesome-hermes-agent": {
+      "stars": 5363,
+      "updated_at": "2026-08-19",
+      "description": "Independent directory of useful skills, plugins, memory providers, tools, surfaces, and guides for Nous Research's open-"
+    },
+    "GargantuaX/gemini-watermark-remover": {
+      "stars": 5355,
+      "updated_at": "2026-08-19",
+      "description": "A high-performance, 100% client-side tool for removing Gemini AI image & video watermarks. Built with pure JavaScript us"
+    },
+    "browser-act/skills": {
+      "stars": 5352,
+      "updated_at": "2026-08-19",
+      "description": "Browser automation CLI built for AI agents. Break through anti-bot walls, hand off to humans across platforms when stuck"
+    },
+    "maziyarpanahi/openmed": {
+      "stars": 5058,
+      "updated_at": "2026-08-19",
+      "description": "Local-first healthcare AI: clinical NER & HIPAA PII de-identification that runs 100% on-device. 2,200+ medical models, 2"
+    },
+    "tech-leads-club/agent-skills": {
+      "stars": 5045,
+      "updated_at": "2026-08-18",
+      "description": "The secure, validated skill registry for professional AI coding agents. Extend Antigravity, Claude Code, Cursor, Copilot"
+    },
+    "libukai/awesome-agent-skills": {
+      "stars": 4985,
+      "updated_at": "2026-08-18",
+      "description": "Agent Skills 终极指南：快速入门、资源推荐、精选技能与实用工具 ｜The Ultimate Guide to Agent Skills: QuickStart, Resources, Features&Toolkit"
+    },
+    "RyanFitzgerald/devportfolio": {
+      "stars": 4957,
+      "updated_at": "2026-08-18",
+      "description": "A modern, minimalist portfolio template built with Astro and Tailwind CSS. Perfect for developers looking to showcase th"
+    },
+    "iflytek/skillhub": {
+      "stars": 4896,
+      "updated_at": "2026-08-19",
+      "description": "Self-hosted, open-source agent skill registry for enterprises. Publish & version skill packages, govern with RBAC and au"
+    },
+    "formkit/formkit": {
+      "stars": 4755,
+      "updated_at": "2026-08-19",
+      "description": "The form framework for coding agents"
+    },
+    "zgsm-ai/costrict": {
+      "stars": 4379,
+      "updated_at": "2026-08-18",
+      "description": "Costrict - strict AI coder for enterprises, quality first, including AI Agent, AI CodeReview, AI Completion. "
+    },
+    "antvis/mcp-server-chart": {
+      "stars": 4319,
+      "updated_at": "2026-08-17",
+      "description": "🤖 A visualization mcp & skills contains 25+ visual charts using @antvis. Using for chart generation and data analysis."
+    },
+    "SamurAIGPT/Generative-Media-Skills": {
+      "stars": 4088,
+      "updated_at": "2026-08-18",
+      "description": "Multi-modal Generative Media Skills for AI Agents (Claude Code, Cursor, Gemini CLI). High-quality image, video, and audi"
+    },
+    "BuilderIO/skills": {
+      "stars": 4017,
+      "updated_at": "2026-08-19",
+      "description": "Skills for coding agents"
+    },
+    "parcadei/Continuous-Claude-v3": {
+      "stars": 3932,
+      "updated_at": "2026-08-18",
+      "description": "Context management for Claude Code. Hooks maintain state via ledgers and handoffs. MCP execution without context polluti"
+    },
+    "google-gemini/gemini-skills": {
+      "stars": 3912,
+      "updated_at": "2026-08-19",
+      "description": "Skills for the Gemini API, SDK and model/agent interactions"
+    },
+    "kunal-kushwaha/Competitive-Programming-Resources": {
+      "stars": 3896,
+      "updated_at": "2026-08-18",
+      "description": "Competitive Programming & System Design Resources."
+    }
+  }
+}

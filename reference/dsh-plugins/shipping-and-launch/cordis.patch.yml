@@ -1,0 +1,12 @@
+# shipping-and-launch — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/shipping-and-launch/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/shipping-and-launch   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/shipping-and-launch)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/shipping-and-launch/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-shipping-and-launch
+      name: '@deepseek-ai/dsh-skill-shipping-and-launch'
+      config:
+        skill: 'shipping-and-launch'
+        description: 'name: shipping-and-launch'
+        source: skills/shipping-and-launch/SKILL.md

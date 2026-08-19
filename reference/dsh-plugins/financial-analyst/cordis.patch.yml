@@ -1,0 +1,12 @@
+# financial-analyst — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/financial-analyst/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/financial-analyst   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/financial-analyst)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/financial-analyst/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-financial-analyst
+      name: '@deepseek-ai/dsh-skill-financial-analyst'
+      config:
+        skill: 'financial-analyst'
+        description: 'name: "financial-analyst"'
+        source: skills/financial-analyst/SKILL.md

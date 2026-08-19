@@ -1,0 +1,12 @@
+# guizang-ppt-skill — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/guizang-ppt-skill/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/guizang-ppt-skill   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/guizang-ppt-skill)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/guizang-ppt-skill/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-guizang-ppt-skill
+      name: '@deepseek-ai/dsh-skill-guizang-ppt-skill'
+      config:
+        skill: 'guizang-ppt-skill'
+        description: 'name: guizang-ppt-skill'
+        source: skills/guizang-ppt-skill/SKILL.md

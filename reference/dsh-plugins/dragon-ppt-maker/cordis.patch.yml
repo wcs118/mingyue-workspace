@@ -1,0 +1,12 @@
+# dragon-ppt-maker — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/dragon-ppt-maker/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/dragon-ppt-maker   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/dragon-ppt-maker)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/dragon-ppt-maker/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-dragon-ppt-maker
+      name: '@deepseek-ai/dsh-skill-dragon-ppt-maker'
+      config:
+        skill: 'dragon-ppt-maker'
+        description: '使用 python-pptx 制作精美PPT，支持科技风设计、图文混排、HTML内容嵌入。'
+        source: skills/dragon-ppt-maker/SKILL.md

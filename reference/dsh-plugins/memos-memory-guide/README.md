@@ -1,0 +1,9 @@
+# memos-memory-guide (dsh 插件)
+
+由 skill-to-plugin.py 自动生成。
+
+- 技能来源: `skills/memos-memory-guide/SKILL.md`
+- npm 包名: `@deepseek-ai/dsh-skill-memos-memory-guide`
+- 插件补丁: `cordis.patch.yml`
+- 安装: `cd /opt/dsh && dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/memos-memory-guide`
+- 接入: `dsh --profile headless --patch reference/dsh-plugins/memos-memory-guide/cordis.patch.yml "任务"`

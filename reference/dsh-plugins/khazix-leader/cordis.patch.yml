@@ -1,0 +1,12 @@
+# khazix-leader — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/khazix-leader/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/khazix-leader   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/khazix-leader)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/khazix-leader/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-khazix-leader
+      name: '@deepseek-ai/dsh-skill-khazix-leader'
+      config:
+        skill: 'khazix-leader'
+        description: 'description: 把一句话的想法拆成 AI agent 能独立跑完的目标任务书。用户说「帮我给 agent 写个目标」「帮我详细拆一下这个目标」「写个任务书/brief 给 agent」「写个 goal 提示词」「让 agent 自'
+        source: skills/khazix-leader/SKILL.md

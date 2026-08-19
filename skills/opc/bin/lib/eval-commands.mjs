@@ -1,0 +1,902 @@
+// Evaluation analysis commands: verify, synthesize, tier-baseline
+// Depends on: eval-parser.mjs, tier-baselines.mjs, util.mjs
+
+import { readFileSync, readdirSync, existsSync } from "fs";
+import { join, dirname } from "path";
+import { execSync } from "child_process";
+import { parseEvaluation } from "./eval-parser.mjs";
+import { getFlag, resolveDir } from "./util.mjs";
+import { checkBaselineCoverage, generateTierTestCases, VALID_TIERS, TEST_LAYERS, TEST_LAYER_KEYWORDS, TEST_LAYER_LABELS } from "./tier-baselines.mjs";
+import { anchorIssues as collectAnchorIssues } from "./test-plan-gate.mjs";
+
+/**
+ * Resolve the set of changed files that a review's changeScope layer must cover.
+ *
+ * The change scope is defined by the commits the OPC flow actually PRODUCED —
+ * not by a blind `git diff HEAD~1`, which mis-attributes unrelated parallel
+ * commits and cannot see session-local artifacts the flow never committed.
+ *
+ * @param {string} baseDir  git working tree to inspect (the --base directory)
+ * @param {string[]|null} changeCommits
+ *    - null  → flag absent (standalone/legacy caller): fall back to HEAD~1..HEAD
+ *    - []    → flow explicitly produced NO commits: nothing to cover → skip clean
+ *    - [sha] → diff exactly these commits (union of their name-only file lists)
+ * @returns {{ files: string[], skip: boolean, reason: string|null }}
+ *    reason is non-null only when the skip is worth surfacing (non-git base).
+ */
+export function changeScopeDiffFiles(baseDir, changeCommits) {
+  const git = (cmd) =>
+    execSync(cmd, { cwd: baseDir, encoding: "utf8", timeout: 15000, stdio: ["ignore", "pipe", "ignore"] });
+
+  let baseIsGit = false;
+  try { git("git rev-parse --is-inside-work-tree"); baseIsGit = true; } catch { baseIsGit = false; }
+  if (!baseIsGit) {
+    return { files: [], skip: true, reason: `--base (${baseDir}) is not a git repository — cannot verify the review covers the change scope` };
+  }
+
+  // Flow-scoped mode: caller passed the commits this flow actually produced.
+  if (Array.isArray(changeCommits)) {
+    if (changeCommits.length === 0) {
+      // The flow committed nothing (reviewed a session-local artifact, or HEAD
+      // moved only via unrelated parallel commits). There is no flow-authored
+      // change scope to cover → skip cleanly, no warning, no false ITERATE.
+      return { files: [], skip: true, reason: null };
+    }
+    const files = new Set();
+    for (const sha of changeCommits) {
+      try {
+        const out = git(`git show --name-only --format= ${sha}`);
+        for (const ff of out.trim().split("\n")) if (ff.length > 0) files.add(ff);
+      } catch { /* unknown/invalid sha — skip this commit, keep the rest */ }
+    }
+    return { files: [...files], skip: false, reason: null };
+  }
+
+  // Legacy/standalone mode (flag absent): diff the last commit.
+  try {
+    let diffOut = "";
+    try { diffOut = git("git diff --name-only HEAD~1"); }
+    catch {
+      // Initial commit shows all files; git available but no HEAD~1.
+      try { diffOut = git("git show --name-only --format='' HEAD"); }
+      catch { /* git available but no commits yet */ }
+    }
+    return { files: diffOut.trim().split("\n").filter(ff => ff.length > 0), skip: false, reason: null };
+  } catch {
+    return { files: [], skip: true, reason: null };
+  }
+}
+
+export function cmdVerify(args) {
+  const file = args[0];
+  if (!file) {
+    console.error("Usage: opc-harness verify <file> [--base <dir>]");
+    process.exit(1);
+  }
+
+  // --base <dir> — root for resolving finding file:line refs (default: cwd)
+  const base = getFlag(args, "base", process.cwd());
+
+  let text;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      console.error(`File not found: ${file}`);
+    } else {
+      console.error(`Cannot read ${file}: ${err.message}`);
+    }
+    process.exit(1);
+  }
+  const result = parseEvaluation(text);
+
+  const findingsWithoutRefs = [];
+  const criticalWithoutFix = [];
+  const findingsWithoutReasoning = [];
+  const invalidFileRefs = [];
+
+  // Cache line counts to avoid re-reading the same file
+  const lineCountCache = new Map();
+  const getLineCount = (path) => {
+    if (lineCountCache.has(path)) return lineCountCache.get(path);
+    try {
+      const content = readFileSync(path, "utf8");
+      const count = content.split("\n").length;
+      lineCountCache.set(path, count);
+      return count;
+    } catch {
+      lineCountCache.set(path, -1);
+      return -1;
+    }
+  };
+
+  for (let i = 0; i < result.findings.length; i++) {
+    const f = result.findings[i];
+    const label = `#${i + 1} [${f.severity}] ${f.file || "no-file"}:${f.line || "?"} \u2014 ${(f.issue || "").slice(0, 60)}`;
+
+    if (!f.file) {
+      findingsWithoutRefs.push(label);
+    }
+    if (f.severity === "critical" && !f.fix) {
+      criticalWithoutFix.push(label);
+    }
+    if (!f.reasoning) {
+      findingsWithoutReasoning.push(label);
+    }
+
+    // ─── Gap 1: file:line reality check ───────────────────────
+    // An evaluator that invents file:line references is producing fake
+    // findings. We verify the file exists and the line number is valid.
+    if (f.file) {
+      // Resolve relative to --base (skip absolute paths — leave as-is)
+      const resolved = f.file.startsWith("/") ? f.file : join(base, f.file);
+      if (!existsSync(resolved)) {
+        invalidFileRefs.push({
+          index: i + 1,
+          file: f.file,
+          line: f.line,
+          severity: f.severity,
+          reason: "file does not exist",
+        });
+      } else if (f.line != null) {
+        const lineCount = getLineCount(resolved);
+        if (lineCount === -1) {
+          invalidFileRefs.push({
+            index: i + 1,
+            file: f.file,
+            line: f.line,
+            severity: f.severity,
+            reason: "file unreadable",
+          });
+        } else if (f.line < 1 || f.line > lineCount) {
+          invalidFileRefs.push({
+            index: i + 1,
+            file: f.file,
+            line: f.line,
+            severity: f.severity,
+            reason: `line ${f.line} outside file (1-${lineCount})`,
+          });
+        }
+      }
+    }
+  }
+
+  const evidenceComplete =
+    findingsWithoutRefs.length === 0 &&
+    criticalWithoutFix.length === 0 &&
+    findingsWithoutReasoning.length === 0 &&
+    invalidFileRefs.length === 0;
+
+  const { findings, ...output } = result;
+  output.findings_without_refs = findingsWithoutRefs;
+  output.critical_without_fix = criticalWithoutFix;
+  output.findings_without_reasoning = findingsWithoutReasoning;
+  output.invalid_file_refs = invalidFileRefs;
+  output.invalid_file_refs_count = invalidFileRefs.length;
+  output.evidence_complete = evidenceComplete;
+  console.log(JSON.stringify(output, null, 2));
+}
+
+function isAbsenceOrMetaFinding(issue) {
+  return /\b(no|not|missing|absent|never|without|unwired|nothing|isn'?t|aren'?t|unreachable|dead code|not wired|not connected|not run|not executed)\b/i
+    .test(String(issue || ""));
+}
+
+// Note: synthesize assumes findings are bugs/issues (review use case).
+export function cmdSynthesize(args) {
+  let _diffFilesCache = null; // cached diff files for changeScopeCoverage
+  // First positional arg is dir, but if it starts with -- it's a flag, not a dir.
+  // When no dir given, auto-resolve to latest session dir.
+  let dir = args[0] && !args[0].startsWith("--") ? args[0] : null;
+  if (!dir) {
+    dir = resolveDir(args);  // auto-resolves to latest session dir
+  }
+  const waveIdx = args.indexOf("--wave");
+  const nodeIdx = args.indexOf("--node");
+
+  if (!dir || (waveIdx === -1 && nodeIdx === -1)) {
+    console.error("Usage: opc-harness synthesize [<dir>] --node <nodeId> [--run <N>]");
+    console.error("       opc-harness synthesize <dir> --wave <N>           (legacy)");
+    console.error("       When <dir> is omitted, auto-resolves to latest session dir.");
+    process.exit(1);
+  }
+
+  let files;
+  let nodeId = null;
+  let targetRunDir = null;
+
+  if (nodeIdx !== -1) {
+    nodeId = args[nodeIdx + 1];
+    if (!nodeId) {
+      console.error("--node requires a nodeId");
+      process.exit(1);
+    }
+
+    const runFlag = args.indexOf("--run");
+
+    if (runFlag !== -1 && args[runFlag + 1]) {
+      targetRunDir = join(dir, "nodes", nodeId, `run_${args[runFlag + 1]}`);
+    } else {
+      const nodeDir = join(dir, "nodes", nodeId);
+      try {
+        const runs = readdirSync(nodeDir)
+          .filter((d) => d.startsWith("run_"))
+          .sort((a, b) => {
+            const na = parseInt(a.replace("run_", ""), 10);
+            const nb = parseInt(b.replace("run_", ""), 10);
+            return nb - na;
+          });
+        if (runs.length === 0) {
+          console.log(JSON.stringify({ roles: [], totals: { critical: 0, warning: 0, suggestion: 0 }, verdict: "BLOCKED", reason: `no runs found for node '${nodeId}' in ${nodeDir}` }));
+          return;
+        }
+        targetRunDir = join(nodeDir, runs[0]);
+      } catch (err) {
+        console.log(JSON.stringify({ roles: [], totals: { critical: 0, warning: 0, suggestion: 0 }, verdict: "BLOCKED", reason: `cannot read node dir ${nodeDir}: ${err.message}` }));
+        return;
+      }
+    }
+
+    try {
+      files = readdirSync(targetRunDir)
+        .filter((f) => f.startsWith("eval") && f.endsWith(".md") && f !== "eval-extensions.md")
+        .map((f) => ({ name: f, path: join(targetRunDir, f) }));
+    } catch (err) {
+      console.log(JSON.stringify({ roles: [], totals: { critical: 0, warning: 0, suggestion: 0 }, verdict: "BLOCKED", reason: `cannot read ${targetRunDir}: ${err.message}` }));
+      return;
+    }
+
+    if (files.length === 0) {
+      console.log(JSON.stringify({ roles: [], totals: { critical: 0, warning: 0, suggestion: 0 }, verdict: "BLOCKED", reason: `no eval-*.md files in ${targetRunDir}` }));
+      return;
+    }
+  } else {
+    const wave = args[waveIdx + 1];
+    if (!wave) {
+      console.error("--wave requires a wave number");
+      process.exit(1);
+    }
+
+    const prefix = `evaluation-wave-${wave}-`;
+    const mergedName = `evaluation-wave-${wave}.md`;
+    const harnessDir = join(dir, ".harness");
+
+    const ROUND_RE = /^evaluation-wave-\d+-round\d+/;
+    try {
+      files = readdirSync(harnessDir)
+        .filter(
+          (f) => f.startsWith(prefix) && f.endsWith(".md") && f !== mergedName && !ROUND_RE.test(f)
+        )
+        .map((f) => ({ name: f, path: join(harnessDir, f) }));
+    } catch (err) {
+      console.error(`Cannot read ${harnessDir}: ${err.message}`);
+      process.exit(1);
+    }
+
+    if (files.length === 0) {
+      console.error(`No evaluation files matching ${prefix}*.md in ${harnessDir}`);
+      process.exit(1);
+    }
+  }
+
+  const isTestDesignNode = nodeId && /test[-_]design/.test(nodeId);
+  const requiresCodeGrounding = !isTestDesignNode;
+
+  const roles = [];
+  const totals = { critical: 0, warning: 0, suggestion: 0 };
+  const thinEvalWarnings = [];
+  const verificationWarnings = [];
+
+  // --base <dir> — project root for validating file:line references in findings
+  const baseDir = getFlag(args, "base", null);
+
+  // --change-commits <sha,sha,...> — the commits this flow actually produced,
+  // defining the changeScope layer's true scope. Absent → null (legacy HEAD~1
+  // fallback); present-but-empty → [] (flow committed nothing → skip cleanly).
+  const changeCommitsRaw = getFlag(args, "change-commits", null);
+  const changeCommits = changeCommitsRaw === null
+    ? null
+    : changeCommitsRaw.split(",").map(s => s.trim()).filter(s => s.length > 0);
+
+  // D1: --base deprecation warning — next version makes this a hard error
+  if (!baseDir) {
+    console.error("⚠️  --base not provided — file:line reference validation skipped. Pass --base <project-root> to enable.");
+  }
+
+  for (const f of files) {
+    let roleName;
+    if (f.name.startsWith("eval-")) {
+      roleName = f.name.replace("eval-", "").replace(/\.md$/, "");
+    } else if (f.name === "eval.md") {
+      roleName = "evaluator";
+    } else {
+      const prefix = f.name.match(/^evaluation-wave-\d+-(.+)\.md$/);
+      roleName = prefix ? prefix[1] : f.name.replace(/\.md$/, "");
+    }
+
+    let text;
+    try {
+      text = readFileSync(f.path, "utf8");
+    } catch (readErr) {
+      console.error(`⚠️  Cannot read ${f.path}: ${readErr.message}`);
+      continue;
+    }
+    const parsed = parseEvaluation(text);
+
+    // ── Format error detection ───────────────────────────────
+    // Lines with severity markers that failed to parse as structured findings.
+    // If ALL severity markers failed → protocol violation, eval cannot produce PASS.
+    if (parsed.formatErrors && parsed.formatErrors.length > 0) {
+      const dropped = parsed.formatErrors.length;
+      totals.warning += dropped;
+      thinEvalWarnings.push(
+        `${roleName}: ${dropped} line(s) with severity markers dropped due to format errors`
+      );
+    }
+
+    const blocked = /BLOCKED/i.test(parsed.verdict);
+
+    // ── Thin eval detection (mechanical) ──────────────────────
+    // Eval under 50 lines is too thin to be a real review — UNLESS
+    // every finding has reasoning + fix + file refs (substance exemption).
+    let thinEvalExempt = false;
+    if (parsed.thinEval && parsed.findings_count > 0) {
+      const allSubstantive = parsed.findings.every(f => f.reasoning && f.fix && f.file);
+      if (allSubstantive && parsed.has_file_refs) thinEvalExempt = true;
+    }
+    if (parsed.thinEval && !thinEvalExempt) {
+      totals.warning += 1;
+      thinEvalWarnings.push(`${roleName}: eval is thin (${parsed.lineCount} lines, min 50)`);
+    }
+    // Review evals with zero file:line references → no grounding in code.
+    if (requiresCodeGrounding && parsed.noCodeRefs && parsed.findings_count > 0) {
+      totals.warning += 1;
+      thinEvalWarnings.push(`${roleName}: eval has 0 file:line references — findings not grounded in code`);
+    }
+
+    // ── Compound defense layers (probability stacking) ──────
+    // Each is independently ~30% bypassable, but stacked:
+    // 5 layers × 30% each = 0.3^5 = 0.24% bypass probability.
+
+    // Layer: low unique content ratio → copy-paste padding detected
+    if (parsed.lowUniqueContent) {
+      totals.warning += 1;
+      thinEvalWarnings.push(`${roleName}: low unique content (${parsed.uniqueRatio}% unique lines) — possible copy-paste padding`);
+    }
+    // Layer: single heading in a 30+ line eval → no structural diversity
+    if (parsed.singleHeading) {
+      totals.warning += 1;
+      thinEvalWarnings.push(`${roleName}: only ${parsed.headingCount} heading(s) in ${parsed.lineCount} lines — real reviews have multiple sections`);
+    }
+    // Layer: findings declared but emoji density too low → bulk filler
+    if (parsed.findingDensityLow) {
+      totals.warning += 1;
+      thinEvalWarnings.push(`${roleName}: finding density too low — ${parsed.findings_count} findings in ${parsed.lineCount} lines suggests bulk filler`);
+    }
+    // Layer: findings without reasoning — every finding must explain WHY
+    if (parsed.findings_count > 0 && parsed.missingReasoningRatio > 50) {
+      totals.warning += 1;
+      thinEvalWarnings.push(`${roleName}: ${parsed.findingsWithoutReasoning}/${parsed.findings_count} findings lack reasoning — findings must explain why`);
+    }
+    // Layer: findings without fix suggestion — every finding must say HOW
+    if (parsed.findings_count > 0 && parsed.missingFixRatio > 50) {
+      totals.warning += 1;
+      thinEvalWarnings.push(`${roleName}: ${parsed.findingsWithoutFix}/${parsed.findings_count} findings lack fix suggestion — findings must be actionable`);
+    }
+    // Layer: line length variance — uniform line lengths suggest template fill
+    if (parsed.lineLengthVarianceLow) {
+      totals.warning += 1;
+      thinEvalWarnings.push(`${roleName}: suspiciously uniform line lengths — possible template fill`);
+    }
+    // Layer: aspirational claims — "should consider", "worth exploring" etc.
+    if (parsed.aspirationalClaims) {
+      totals.warning += 1;
+      thinEvalWarnings.push(`${roleName}: ${parsed.aspirationalLineCount} aspirational/non-actionable claims — findings must be concrete, not "should consider"`);
+    }
+
+    // Layer: file:line reality check (requires --base) — detect fabricated references
+    // This is the highest-value layer because it requires findings to reference REAL code.
+    let invalidRefCount = 0;
+    let weakRefCount = 0;
+    let testDesignAnchorIssueCount = 0;
+    if (baseDir && parsed.findings.length > 0) {
+      // F9: resolve refs against the project base AND the session dir(s). Evals
+      // legitimately cite session artifacts (test-plan.md, brief.md, sibling evals)
+      // that live outside the project base — those are valid, not fabricated.
+      const refRoots = [baseDir, dir, dirname(f.path)];
+      for (const finding of parsed.findings) {
+        if (finding.file) {
+          let resolved = null;
+          if (finding.file.startsWith("/")) {
+            if (existsSync(finding.file)) resolved = finding.file;
+          } else {
+            for (const root of refRoots) {
+              const cand = join(root, finding.file);
+              if (existsSync(cand)) { resolved = cand; break; }
+            }
+          }
+          if (!resolved) {
+            invalidRefCount++;
+          } else if (finding.line != null) {
+            try {
+              const content = readFileSync(resolved, "utf8");
+              const srcLines = content.split("\n");
+              if (finding.line < 1 || finding.line > srcLines.length) {
+                invalidRefCount++;
+              } else {
+                // Content relevance: ±3 line window, check token overlap with finding issue
+                const lo = Math.max(0, finding.line - 4); // finding.line is 1-indexed
+                const hi = Math.min(srcLines.length, finding.line + 2);
+                const windowText = srcLines.slice(lo, hi).join(" ").toLowerCase();
+                const CODE_STOPWORDS = new Set([
+                  "const", "let", "var", "function", "return", "import", "export",
+                  "from", "this", "that", "the", "and", "for", "with", "not",
+                  "has", "are", "was", "but", "can", "will", "new", "class",
+                  "true", "false", "null", "undefined", "async", "await",
+                ]);
+                const issueTokens = (finding.issue || "").toLowerCase()
+                  .replace(/[^a-z0-9_]/g, " ").split(/\s+/)
+                  .filter(t => t.length >= 3 && !CODE_STOPWORDS.has(t));
+                const windowTokens = windowText
+                  .replace(/[^a-z0-9_]/g, " ").split(/\s+/)
+                  .filter(t => t.length >= 3 && !CODE_STOPWORDS.has(t));
+                if (!isAbsenceOrMetaFinding(finding.issue) && issueTokens.length >= 2 && windowTokens.length >= 1) {
+                  const shared = issueTokens.filter(t => windowTokens.some(s => s.includes(t) || t.includes(s)));
+                  if (shared.length === 0) {
+                    weakRefCount++;
+                  }
+                }
+              }
+            } catch { invalidRefCount++; }
+          }
+        }
+      }
+      if (invalidRefCount > 0) {
+        totals.warning += invalidRefCount;
+        thinEvalWarnings.push(`${roleName}: ${invalidRefCount} finding(s) reference non-existent or out-of-range file:line — fabricated refs detected`);
+      }
+      if (weakRefCount > 0) {
+        totals.warning += weakRefCount;
+        thinEvalWarnings.push(`${roleName}: ${weakRefCount} finding(s) reference valid file:line but issue text shares no tokens with source (±3 lines) — possible hallucination`);
+      }
+    }
+
+    // Layer: change scope coverage — eval must mention files from the diff
+    // Requires --base AND git to be available. We cache diffFiles across roles.
+    let changeScopeUncovered = false;
+    if (requiresCodeGrounding && baseDir && parsed.findings_count > 0) {
+      if (_diffFilesCache === null) {
+        // Scope the "changed files" to what the flow actually produced (via
+        // --change-commits), not a blind HEAD~1 diff. This avoids the structural
+        // false-positive where an unrelated parallel commit or a session-local
+        // artifact review gets compared against noise. A non-git base is surfaced
+        // as an explicit warning; an empty flow-produced set skips cleanly.
+        const scope = changeScopeDiffFiles(baseDir, changeCommits);
+        if (scope.reason) {
+          verificationWarnings.push(`changeScopeCoverage skipped: ${scope.reason}`);
+        }
+        _diffFilesCache = scope.files;
+      }
+      if (_diffFilesCache.length > 0) {
+        const evalLower = text.toLowerCase();
+        const mentionedDiffFiles = _diffFilesCache.filter(df => {
+          const dfLower = df.toLowerCase();
+          // Prefer full path match; fall back to parent/file match; last resort basename
+          if (evalLower.includes(dfLower)) return true;
+          const parts = dfLower.split("/");
+          if (parts.length >= 2) {
+            const parentFile = parts.slice(-2).join("/");
+            if (evalLower.includes(parentFile)) return true;
+          }
+          return evalLower.includes(parts[parts.length - 1]);
+        });
+        const coverageRatio = mentionedDiffFiles.length / _diffFilesCache.length;
+        // If eval covers <30% of diff files and there are ≥2 diff files, flag it
+        if (coverageRatio < 0.3 && _diffFilesCache.length >= 2) {
+          changeScopeUncovered = true;
+          totals.warning += 1;
+          thinEvalWarnings.push(`${roleName}: eval covers ${mentionedDiffFiles.length}/${_diffFilesCache.length} changed files — review must cover change scope`);
+        }
+      }
+    }
+
+    if (isTestDesignNode) {
+      const anchorRoots = [baseDir, dir, dirname(f.path)].filter(Boolean);
+      const issues = collectAnchorIssues(text.split("\n"), anchorRoots);
+      if (issues.length > 0) {
+        testDesignAnchorIssueCount = issues.length;
+        totals.warning += issues.length;
+        thinEvalWarnings.push(`${roleName}: test-design anchor issue(s): ${issues.join("; ")}`);
+      }
+    }
+
+    roles.push({
+      role: roleName,
+      critical: parsed.critical,
+      warning: parsed.warning,
+      suggestion: parsed.suggestion,
+      blocked,
+      thinEval: (parsed.thinEval && !thinEvalExempt) || false,
+      thinEvalExempt: thinEvalExempt || false,
+      noCodeRefs: (requiresCodeGrounding && parsed.noCodeRefs) || false,
+      lineCount: parsed.lineCount,
+      findingsCount: parsed.findings_count || 0,
+      lowUniqueContent: parsed.lowUniqueContent || false,
+      singleHeading: parsed.singleHeading || false,
+      findingDensityLow: parsed.findingDensityLow || false,
+      missingReasoningTripped: parsed.findings_count > 0 && parsed.missingReasoningRatio > 50,
+      missingFixTripped: parsed.findings_count > 0 && parsed.missingFixRatio > 50,
+      lineLengthVarianceLow: parsed.lineLengthVarianceLow || false,
+      aspirationalClaims: parsed.aspirationalClaims || false,
+      changeScopeUncovered: changeScopeUncovered || false,
+      invalidRefCount,
+      testDesignAnchorIssueCount,
+    });
+
+    totals.critical += parsed.critical;
+    totals.warning += parsed.warning;
+    totals.suggestion += parsed.suggestion;
+  }
+
+  // ── D1.5: Mandatory role enforcement ──────────────────────────────
+  // Roles with `mandatory: true` in front matter MUST appear in eval output.
+  // If missing, emit warning so gate will ITERATE — forcing orchestrator to re-dispatch.
+  const mandatoryMissing = [];
+  try {
+    const rolesDir = new URL("../../roles/", import.meta.url).pathname;
+    if (existsSync(rolesDir)) {
+      const roleFiles = readdirSync(rolesDir).filter(f => f.endsWith(".md"));
+      for (const rf of roleFiles) {
+        try {
+          const content = readFileSync(join(rolesDir, rf), "utf8");
+          // Quick front matter check for mandatory: true
+          const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+          if (fmMatch && /mandatory:\s*true/i.test(fmMatch[1])) {
+            const roleName = rf.replace(/\.md$/, "");
+            const found = roles.some(r => r.role === roleName);
+            if (!found) {
+              mandatoryMissing.push(roleName);
+              totals.warning += 1;
+              thinEvalWarnings.push(`mandatory role '${roleName}' not present in eval output — orchestrator must dispatch this role`);
+            }
+          }
+        } catch { /* unreadable role file */ }
+      }
+    }
+  } catch { /* roles dir resolution failed — skip */ }
+
+  // ── D2: Compound eval quality gate ─────────────────────────────
+  for (const role of roles) {
+    let compoundFails = 0;
+    if (role.thinEval) compoundFails++;
+    if (role.noCodeRefs && role.findingsCount > 0) compoundFails++;
+    if (role.lowUniqueContent) compoundFails++;
+    if (role.singleHeading) compoundFails++;
+    if (role.findingDensityLow) compoundFails++;
+    if (role.missingReasoningTripped) compoundFails++;
+    if (role.missingFixTripped) compoundFails++;
+    if (role.lineLengthVarianceLow) compoundFails++;
+    if (role.aspirationalClaims) compoundFails++;
+    if (role.changeScopeUncovered) compoundFails++;
+    if (role.invalidRefCount > 0) compoundFails += 2; // weighted: fabricated refs
+    role._compoundFails = compoundFails;
+  }
+  const qualityFailRoles = roles.filter(r => r._compoundFails >= 3);
+  const noStrict = args.includes("--no-strict");
+  const strict = !noStrict; // D2 enforce by default; --no-strict reverts to shadow
+  let qfDetail = "";
+  if (qualityFailRoles.length > 0) {
+    qfDetail = qualityFailRoles.map(r => `${r.role}(${r._compoundFails} layers)`).join(", ");
+  }
+
+  let verdict, reason;
+  const blockedRoles = roles.filter((r) => r.blocked);
+  if (blockedRoles.length > 0) {
+    verdict = "BLOCKED";
+    reason = `blocked by ${blockedRoles.map((r) => r.role).join(", ")}`;
+  } else if (totals.critical > 0) {
+    verdict = "FAIL";
+    reason = `${totals.critical} validated critical finding(s)`;
+  } else if (qualityFailRoles.length > 0 && strict) {
+    // D2: --strict mode enforces compound gate as hard FAIL
+    verdict = "FAIL";
+    reason = `eval quality gate: ${qfDetail}`;
+  } else if (totals.warning > 0) {
+    verdict = "ITERATE";
+    reason = `${totals.warning} warning finding(s)`;
+  } else {
+    verdict = "PASS";
+    reason = "all roles LGTM or suggestions only";
+  }
+
+  // ── D3: Iteration escalation ──────────────────────────────────
+  const iterationN = getFlag(args, "iteration", null);
+  if (iterationN && parseInt(iterationN) >= 2 && thinEvalWarnings.length > 0) {
+    verdict = "FAIL";
+    reason = `eval quality warnings persist after ${iterationN} iterations — escalating to FAIL`;
+  }
+
+  // ── Evaluator guidance (feedback loop) ───────────────────────────
+  // When D2 triggers, generate per-role guidance so the orchestrator can
+  // inject actionable hints into the R2 evaluator prompt.
+  const ALL_LAYER_KEYS = [
+    "thinEval", "noCodeRefs", "lowUniqueContent", "singleHeading",
+    "findingDensityLow", "missingReasoningTripped", "missingFixTripped",
+    "lineLengthVarianceLow", "aspirationalClaims", "changeScopeUncovered", "invalidRefCount",
+  ];
+  const LAYER_HINTS = {
+    thinEval: "Eval is under 50 lines — add detailed per-finding reasoning, fix suggestions, and file:line references",
+    noCodeRefs: "No file:line references found — cite specific code locations for every finding",
+    lowUniqueContent: "Low unique content ratio — avoid repeating phrases; each finding must add distinct value",
+    singleHeading: "Only 1 heading in 30+ lines — structure the eval with sections (Summary, Findings, Verdict)",
+    findingDensityLow: "Finding density too low — remove filler prose, keep findings dense and specific",
+    missingReasoningTripped: "Over half of findings lack reasoning — every finding must explain WHY it matters",
+    missingFixTripped: "Over half of findings lack fix suggestions — every finding must say HOW to fix",
+    lineLengthVarianceLow: "Suspiciously uniform line lengths — write naturally, not from a template",
+    aspirationalClaims: "Too many aspirational claims ('should consider', 'worth exploring') — findings must be concrete and actionable",
+    changeScopeUncovered: "Eval covers <30% of changed files — review must address the full change scope",
+    invalidRefCount: "Fabricated file:line references detected — only cite files and lines that actually exist",
+  };
+  // Exhaustive check: every layer must have a hint (catches stale hint map on new layer addition)
+  for (const k of ALL_LAYER_KEYS) {
+    if (!LAYER_HINTS[k]) throw new Error(`LAYER_HINTS missing key: ${k} — add a hint for the new layer`);
+  }
+  let evaluatorGuidance = undefined;
+  if (qualityFailRoles.length > 0) {
+    evaluatorGuidance = {};
+    for (const role of qualityFailRoles) {
+      const triggered = [];
+      const hints = [];
+      if (role.thinEval) { triggered.push("thinEval"); hints.push(LAYER_HINTS.thinEval); }
+      if (role.noCodeRefs && role.findingsCount > 0) { triggered.push("noCodeRefs"); hints.push(LAYER_HINTS.noCodeRefs); }
+      if (role.lowUniqueContent) { triggered.push("lowUniqueContent"); hints.push(LAYER_HINTS.lowUniqueContent); }
+      if (role.singleHeading) { triggered.push("singleHeading"); hints.push(LAYER_HINTS.singleHeading); }
+      if (role.findingDensityLow) { triggered.push("findingDensityLow"); hints.push(LAYER_HINTS.findingDensityLow); }
+      if (role.missingReasoningTripped) { triggered.push("missingReasoningTripped"); hints.push(LAYER_HINTS.missingReasoningTripped); }
+      if (role.missingFixTripped) { triggered.push("missingFixTripped"); hints.push(LAYER_HINTS.missingFixTripped); }
+      if (role.lineLengthVarianceLow) { triggered.push("lineLengthVarianceLow"); hints.push(LAYER_HINTS.lineLengthVarianceLow); }
+      if (role.aspirationalClaims) { triggered.push("aspirationalClaims"); hints.push(LAYER_HINTS.aspirationalClaims); }
+      if (role.changeScopeUncovered) { triggered.push("changeScopeUncovered"); hints.push(LAYER_HINTS.changeScopeUncovered); }
+      if (role.invalidRefCount > 0) { triggered.push("invalidRefCount"); hints.push(LAYER_HINTS.invalidRefCount); }
+      evaluatorGuidance[role.role] = { triggeredLayers: triggered, hints };
+    }
+  }
+
+  // ── Tier baseline coverage check ──────────────────────────────
+  let tierCoverage = null;
+  if (nodeIdx !== -1) {
+    try {
+      const harnessDir = dir;
+      const statePath = join(harnessDir, "flow-state.json");
+      if (existsSync(statePath)) {
+        const state = JSON.parse(readFileSync(statePath, "utf8"));
+        if (state.tier && VALID_TIERS.has(state.tier)) {
+          // Concatenate all eval text for coverage check
+          const allEvalText = files.map((f) => {
+            try { return readFileSync(f.path, "utf8"); } catch { return ""; }
+          }).join("\n");
+          const coverage = checkBaselineCoverage(allEvalText, state.tier);
+          tierCoverage = {
+            tier: state.tier,
+            covered: coverage.covered.length,
+            uncovered: coverage.uncovered.length,
+            uncoveredItems: coverage.uncovered,
+          };
+          // Uncovered baseline items with severity >= warning become warnings in synthesize output
+          for (const item of coverage.uncovered) {
+            if (item.severity === "warning" || item.severity === "critical") {
+              totals.warning += 1;
+              // Re-evaluate verdict — uncovered tier items are treated as warnings
+              if (verdict === "PASS") {
+                verdict = "ITERATE";
+                reason = `${reason}; tier baseline items uncovered`;
+              }
+            }
+          }
+        }
+      }
+    } catch { /* flow-state unreadable — skip tier check */ }
+  }
+
+  // ── Test plan layer coverage check (for test-design nodes) ──────
+  // Keyword-based: checks that test-plan.md mentions all 5 test layers.
+  // Honest caveat: LLM can write a section header without real content.
+  // But this is better than 0 check — forces the label to exist.
+  let testPlanCoverage = null;
+  if (nodeId && (nodeId.includes("test-design") || nodeId.includes("test_design"))) {
+    const testPlanPath = targetRunDir ? join(targetRunDir, "test-plan.md") : null;
+    // Also check node-level test-plan.md
+    const nodeTestPlanPath = nodeId ? join(dir, "nodes", nodeId, "test-plan.md") : null;
+    let planText = null;
+
+    if (testPlanPath && existsSync(testPlanPath)) {
+      planText = readFileSync(testPlanPath, "utf8");
+    } else if (nodeTestPlanPath && existsSync(nodeTestPlanPath)) {
+      planText = readFileSync(nodeTestPlanPath, "utf8");
+    }
+
+    if (planText) {
+      const lowerPlan = planText.toLowerCase();
+      const planLines = planText.split("\n");
+      const covered = [];
+      const missing = [];
+      const shallow = [];
+      for (const layer of TEST_LAYERS) {
+        const keywords = TEST_LAYER_KEYWORDS[layer];
+        const found = keywords.some(kw => lowerPlan.includes(kw));
+        if (found) {
+          covered.push(layer);
+        } else {
+          missing.push({ layer, label: TEST_LAYER_LABELS[layer] });
+          totals.warning += 1;
+        }
+      }
+
+      // ── Compound defense: section depth check ─────────────
+      // For each covered layer, find the section and verify it has ≥3
+      // non-empty lines of actual content (not just a heading).
+      // Bypass probability: ~20% (must write 3+ real lines per section).
+      for (const layer of covered) {
+        const keywords = TEST_LAYER_KEYWORDS[layer];
+        // Find heading line that contains a layer keyword
+        let sectionStart = -1;
+        for (let i = 0; i < planLines.length; i++) {
+          const lower = planLines[i].toLowerCase();
+          if (/^#{1,3}\s/.test(planLines[i]) && keywords.some(kw => lower.includes(kw))) {
+            sectionStart = i;
+            break;
+          }
+        }
+        if (sectionStart === -1) continue;
+
+        // Count non-empty content lines until next heading or EOF
+        let contentLines = 0;
+        for (let i = sectionStart + 1; i < planLines.length; i++) {
+          if (/^#{1,3}\s/.test(planLines[i])) break;
+          if (planLines[i].trim().length > 0) contentLines++;
+        }
+        if (contentLines < 3) {
+          shallow.push({ layer, label: TEST_LAYER_LABELS[layer], contentLines });
+          totals.warning += 1;
+        }
+      }
+
+      // ── Compound defense: actionable command density ──────
+      // Real test plans contain executable commands. Zero commands = suspicious.
+      // Matches: npm test, npx ..., pytest, vitest, jest, playwright, curl, etc.
+      const CMD_RE = /\b(npm\s+(test|run)|npx\s+\w|pytest|vitest|jest|playwright\s+test|curl\s+|bash\s+|sh\s+|node\s+|python[3]?\s+)/i;
+      const cmdLineCount = planLines.filter(l => CMD_RE.test(l)).length;
+      const noActionableCommands = cmdLineCount === 0 && planLines.length >= 10;
+
+      testPlanCoverage = { covered, missing, shallow: shallow.length > 0 ? shallow : undefined, cmdLineCount, noActionableCommands: noActionableCommands || undefined };
+
+      if (noActionableCommands) {
+        totals.warning += 1;
+      }
+
+      const issues = [];
+      if (missing.length > 0) issues.push(`missing layers: ${missing.map(m => m.layer).join(", ")}`);
+      if (shallow.length > 0) issues.push(`shallow sections: ${shallow.map(s => s.layer).join(", ")}`);
+      if (noActionableCommands) issues.push("0 actionable commands in test plan");
+
+      const anchorRoots = [baseDir, dir].filter(Boolean);
+      const anchorIssues = collectAnchorIssues(planLines, anchorRoots);
+      totals.warning += anchorIssues.length;
+      if (anchorIssues.length > 0) issues.push(`anchor: ${anchorIssues.join("; ")}`);
+
+      if (issues.length > 0) {
+        if (verdict === "PASS") {
+          verdict = "ITERATE";
+          reason = `${reason}; test plan: ${issues.join("; ")}`;
+        } else if (verdict === "ITERATE") {
+          reason = `${reason}; test plan: ${issues.join("; ")}`;
+        }
+      }
+    }
+  }
+
+  // ── Extension rubric sidecar (informational enrichment) ──────────
+  let rubricScore = undefined;
+  let convergenceWarning = undefined;
+  let rubricVersionWarning = undefined;
+  if (targetRunDir) {
+    try {
+      const rubricPath = join(targetRunDir, "ext-design-intelligence", "rubric-verdict.json");
+      if (existsSync(rubricPath)) {
+        rubricScore = JSON.parse(readFileSync(rubricPath, "utf8"));
+      }
+    } catch { /* graceful — rubric is informational */ }
+
+    // ── Fix #2: Version mismatch detection ──
+    if (rubricScore && rubricScore.version) {
+      try {
+        const statePath = join(dir, "flow-state.json");
+        if (existsSync(statePath)) {
+          const flowState = JSON.parse(readFileSync(statePath, "utf8"));
+          if (flowState.extensionVersions) {
+            const diExt = flowState.extensionVersions.find(e => e.name === "design-intelligence");
+            if (diExt && diExt.version !== "unknown" && diExt.version !== rubricScore.version) {
+              rubricVersionWarning = `Rubric version drift: flow pinned ${diExt.version} but current rubric is ${rubricScore.version} — scores may not be comparable across iterations`;
+            }
+          }
+        }
+      } catch { /* graceful */ }
+    }
+
+    // ── Fix #3: Rubric verdict enforcement (polished+ tier) ──
+    if (rubricScore && rubricScore.verdict === "FAIL") {
+      try {
+        const statePath = join(dir, "flow-state.json");
+        if (existsSync(statePath)) {
+          const flowState = JSON.parse(readFileSync(statePath, "utf8"));
+          const tier = flowState.tier || "functional";
+          if (tier === "polished" || tier === "delightful") {
+            if (verdict === "PASS") {
+              verdict = "ITERATE";
+              reason = `${reason}; rubric score ${rubricScore.final.toFixed(1)}/5.0 below threshold (FAIL)`;
+            }
+          }
+        }
+      } catch { /* graceful */ }
+    }
+
+    // ── Fix #4: Convergence detection — max-min across last 3 runs ──
+    if (rubricScore && nodeId) {
+      const runFlag = args.indexOf("--run");
+      const currentRunN = runFlag !== -1 && args[runFlag + 1] ? parseInt(args[runFlag + 1], 10) : null;
+      const iteration = currentRunN || parseInt((targetRunDir.match(/run_(\d+)$/) || [])[1] || "1", 10);
+      if (iteration >= 3) {
+        const recentScores = [rubricScore.final];
+        for (let i = iteration - 1; i >= Math.max(1, iteration - 2); i--) {
+          try {
+            const prevPath = join(dir, "nodes", nodeId, `run_${i}`, "ext-design-intelligence", "rubric-verdict.json");
+            if (existsSync(prevPath)) {
+              const prev = JSON.parse(readFileSync(prevPath, "utf8"));
+              if (prev.final != null) recentScores.push(prev.final);
+            }
+          } catch { /* skip */ }
+        }
+        if (recentScores.length >= 3) {
+          const range = Math.max(...recentScores) - Math.min(...recentScores);
+          if (range < 0.5) {
+            convergenceWarning = `Rubric score stagnant (range ${range.toFixed(2)} across last ${recentScores.length} runs, scores: ${recentScores.map(s => s.toFixed(1)).join("→")}) — feedback may not be actionable`;
+          }
+        }
+      }
+    }
+  }
+
+  console.log(JSON.stringify({
+    roles, totals, verdict, reason, tierCoverage,
+    rubricScore,
+    rubricVersionWarning,
+    convergenceWarning,
+    thinEvalWarnings: thinEvalWarnings.length > 0 ? thinEvalWarnings : undefined,
+    verificationWarnings: verificationWarnings.length > 0 ? verificationWarnings : undefined,
+    evalQualityGate: qualityFailRoles.length > 0
+      ? { triggered: true, mode: strict ? "enforce" : "shadow", roles: qfDetail }
+      : undefined,
+    evaluatorGuidance,
+    mandatoryMissing: mandatoryMissing.length > 0 ? mandatoryMissing : undefined,
+    testPlanCoverage: testPlanCoverage || undefined,
+  }, null, 2));
+}
+
+// ─── tier-baseline ──────────────────────────────────────────────
+
+export function cmdTierBaseline(args) {
+  const tier = getFlag(args, "tier");
+
+  if (!tier) {
+    console.error("Usage: opc-harness tier-baseline --tier <functional|polished|delightful>");
+    process.exit(1);
+  }
+
+  if (!VALID_TIERS.has(tier)) {
+    console.log(JSON.stringify({ error: `invalid tier: '${tier}' (expected: ${[...VALID_TIERS].join(", ")})`, testCases: [] }));
+    return;
+  }
+
+  const testCases = generateTierTestCases(tier);
+  console.log(JSON.stringify({ tier, total: testCases.length, testCases }, null, 2));
+}

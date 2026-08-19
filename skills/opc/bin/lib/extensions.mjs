@@ -1,0 +1,1347 @@
+// extensions.mjs — OPC Extension System
+// Loads user extensions from ~/.claude/skills/opc-extension/, fires hooks at call sites.
+// No module-level singletons — loadExtensions returns a registry object.
+// Deliberate exceptions: _breakerSchemaWarned (one warning per process for schema
+// version mismatch) and _bareCapabilityWarnings (deduplicate bare-string warnings
+// across fire calls within a single process). Both are intentionally process-scoped.
+//
+// ── Activation model (capability contract) ──
+// Extensions declare what they provide:
+//   export const meta = { name, provides: ["visual-consistency-check"], description };
+// OPC nodes declare what they need via flow template's `nodeCapabilities`:
+//   nodeCapabilities: { "code-review": ["visual-consistency-check", "code-quality-check"] }
+// OPC core (firePromptAppend/fireVerdictAppend) matches: fire if ANY of ext.provides
+// is in the current node's required capability set. Otherwise silent skip.
+// An extension with provides: [] is legal — startup.check runs, hooks never fire.
+//
+// ── Hook interface ──
+// New-style (recommended):
+//   export const meta = { name: "my-ext", provides: ["..."], description: "..." };
+//   export async function promptAppend(ctx) { return "## Section\n..."; }
+//   export async function verdictAppend(ctx) { return [{ severity, category, message }]; }
+//   export async function startupCheck(ctx) { /* throw to abort load */ }
+//
+// Legacy new-style (hooks object):
+//   export default { hooks: { "prompt.append": fn, "verdict.append": fn } }
+//
+// Finding shape: { severity: "error"|"warning"|"info", category: string, message: string, file?: string }
+
+import { readFileSync, existsSync, mkdirSync, unlinkSync } from "fs";
+import { readdir } from "fs/promises";
+import { join } from "path";
+import os from "os";
+import { atomicWriteSync } from "./util.mjs";
+
+// ─── Constants ───────────────────────────────────────────────────
+
+const HOOK_TIMEOUT_MS = Number(process.env.OPC_HOOK_TIMEOUT_MS) || 60_000;
+
+// Circuit-breaker: after N consecutive failures, the extension is auto-disabled
+// for the remainder of the process. Override via OPC_HOOK_FAILURE_THRESHOLD.
+// Set to 0 to disable the breaker (still records failures, never trips).
+const HOOK_FAILURE_THRESHOLD = (() => {
+  const raw = process.env.OPC_HOOK_FAILURE_THRESHOLD;
+  if (raw === undefined || raw === "") return 3;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 3;
+})();
+
+// Cap on registry.failures[] to keep memory + report file bounded in long-lived
+// processes. Oldest entries are dropped FIFO once the cap is reached, and a
+// running drop counter is exposed via registry.failuresDropped.
+const FAILURE_LOG_CAP = (() => {
+  const raw = process.env.OPC_HOOK_FAILURE_LOG_CAP;
+  if (raw === undefined || raw === "") return 200;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 200;
+})();
+
+// Tagged sentinel — survives across module boundaries via name check (instanceof
+// is fragile under dynamic re-import). Used by withTimeout + recordFailure to
+// classify timeouts deterministically instead of regex-sniffing err.message.
+export class HookTimeoutError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "HookTimeoutError";
+  }
+}
+
+function isHookTimeoutError(err) {
+  return err && (err instanceof HookTimeoutError || err.name === "HookTimeoutError");
+}
+
+function startupCheckReason(result) {
+  if (!result || typeof result !== "object") return "";
+  const value = result.reason ?? result.msg ?? result.message;
+  return value ? `: ${String(value).slice(0, 200)}` : "";
+}
+
+// ─── Failure record helpers ──────────────────────────────────────
+//
+// Every prompt.append / verdict.append failure (throw, timeout, bad-return-shape)
+// is appended to registry.failures[]. The orchestrator/gate persists these to
+// eval-extension-failures.md so a flaky or crashing extension is observable
+// instead of silently degrading the run.
+
+function appendFailure(registry, entry) {
+  if (!Array.isArray(registry.failures)) registry.failures = [];
+  registry.failures.push(entry);
+  while (registry.failures.length > FAILURE_LOG_CAP) {
+    registry.failures.shift();
+    registry.failuresDropped = (registry.failuresDropped || 0) + 1;
+  }
+}
+
+function recordFailure(registry, ext, hook, kind, message) {
+  const entry = {
+    ext: ext.name,
+    hook,
+    kind,                              // "throw" | "timeout" | "bad-return"
+    message: String(message).slice(0, 500),
+    at: new Date().toISOString(),
+  };
+  appendFailure(registry, entry);
+  ext._failStreak = (ext._failStreak || 0) + 1;
+  if (HOOK_FAILURE_THRESHOLD > 0 && ext._failStreak >= HOOK_FAILURE_THRESHOLD && ext.enabled) {
+    ext.enabled = false;
+    ext.disabledReason = `circuit-breaker tripped after ${ext._failStreak} consecutive failures`;
+    console.error(`[opc] CIRCUIT-BREAKER: extension '${ext.name}' disabled after ${ext._failStreak} consecutive failures (last: ${kind} in ${hook})`);
+    appendFailure(registry, {
+      ext: ext.name,
+      hook: "_circuit_breaker",
+      kind: "disabled",
+      message: ext.disabledReason,
+      at: entry.at,
+    });
+  }
+}
+
+function recordSuccess(ext) {
+  // Any successful invocation resets the consecutive-failure streak.
+  // The breaker only trips on N-in-a-row, not N-total.
+  if (ext._failStreak) ext._failStreak = 0;
+}
+
+function startupFailureEntry(name, kind, message, meta = {}) {
+  return {
+    ext: name,
+    hook: "startup.check",
+    kind,
+    message: String(message || "").slice(0, 500),
+    at: new Date().toISOString(),
+    provides: Array.isArray(meta.provides) ? meta.provides : [],
+    disabledCapabilities: Array.isArray(meta._disabledCapabilities) ? meta._disabledCapabilities : [],
+  };
+}
+
+/**
+ * Manually re-enable a disabled extension and clear its failure streak so it
+ * isn't immediately re-tripped by the next single failure. Call this from an
+ * orchestrator only after fixing the root cause.
+ *
+ * If `registry` is provided and has `_flowDir`, the persisted breaker state
+ * is updated so the reset survives across CLI invocations. Without this,
+ * resetExtension was effectively a no-op under short-lived-process CLI
+ * (U5.8r finding).
+ */
+export function resetExtension(ext, registry) {
+  if (!ext) return;
+  ext.enabled = true;
+  ext._failStreak = 0;
+  delete ext.disabledReason;
+  if (registry && registry._flowDir) {
+    try { saveBreakerState(registry._flowDir, registry); } catch { /* non-fatal */ }
+  }
+}
+
+// ─── Persistent circuit-breaker state (F5 / U5.7) ────────────────
+//
+// Problem: circuit-breaker state lives on the in-memory `ext` object. Every
+// CLI invocation (`extension-verdict`, `extension-artifact`, ...) reloads
+// extensions and resets `_failStreak=0` and `enabled=true`. A broken
+// extension trips → recovers → trips again on the very next call. The
+// breaker is effectively a no-op across invocations within a single flow.
+//
+// Fix: persist breaker state to `<flowDir>/.extension-state.json`.
+//   - `loadExtensions({ flowDir })` reads the file (if any) and applies
+//     `enabled=false`/`disabledReason`/`_failStreak` to matching extensions.
+//   - After any fire* hook, if `registry._flowDir` is set, the current
+//     breaker state is written atomically (write-to-tmp + rename).
+//   - `cmdInit` clears the file on fresh flow init so a new run starts
+//     with a clean slate.
+//
+// Schema v1:
+//   {
+//     "version": 1,
+//     "updatedAt": "2026-04-19T10:30:00.000Z",
+//     "extensions": {
+//       "flaky-ext": { "enabled": false, "failStreak": 3,
+//                      "disabledReason": "circuit-breaker tripped after 3 ..." },
+//       "healthy-ext": { "enabled": true, "failStreak": 0 }
+//     }
+//   }
+//
+// Forward-compat: unknown top-level keys are preserved round-trip; a
+// future v2 can add fields without breaking v1 readers. v!==1 rows are
+// ignored (log once, proceed with fresh state) so a downgraded binary
+// doesn't crash on a newer-schema file.
+
+export const BREAKER_STATE_FILE = ".extension-state.json";
+let _breakerSchemaWarned = false;
+
+/**
+ * Master switch for persistence. `OPC_BREAKER_STATE=disabled` skips all
+ * load/save — useful for tests that share a harness dir across scenarios
+ * and don't want breaker state to leak between them. The previous
+ * workaround (`rm -f .extension-state.json` between test phases) worked
+ * but leaked into every user test script. (U5.8r finding.)
+ */
+function breakerPersistenceEnabled() {
+  return process.env.OPC_BREAKER_STATE !== "disabled";
+}
+
+export function loadBreakerState(flowDir) {
+  if (!flowDir) return null;
+  if (!breakerPersistenceEnabled()) return null;
+  const statePath = join(flowDir, BREAKER_STATE_FILE);
+  if (!existsSync(statePath)) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(statePath, "utf8"));
+  } catch (err) {
+    console.error(`WARN: .extension-state.json unreadable (${err.message}) — proceeding with fresh breaker state`);
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  if (parsed.version !== 1) {
+    if (!_breakerSchemaWarned) {
+      console.error(`WARN: .extension-state.json version=${parsed.version} unknown (expected 1) — ignoring`);
+      _breakerSchemaWarned = true;
+    }
+    return null;
+  }
+  if (!parsed.extensions || typeof parsed.extensions !== "object") return null;
+  return parsed;
+}
+
+export function applyBreakerState(registry, state) {
+  if (!state || !state.extensions) return;
+  const restored = [];
+  for (const ext of registry.extensions) {
+    const snap = state.extensions[ext.name];
+    if (!snap || typeof snap !== "object") continue;
+    if (snap.enabled === false) {
+      ext.enabled = false;
+      ext.disabledReason = typeof snap.disabledReason === "string"
+        ? snap.disabledReason
+        : "circuit-breaker state restored (ext was disabled in prior run)";
+      restored.push(ext.name);
+    }
+    if (typeof snap.failStreak === "number" && snap.failStreak >= 0) {
+      ext._failStreak = Math.floor(snap.failStreak);
+    }
+  }
+  // U5.8r: surface the restoration so operators can diagnose "my ext
+  // stopped firing". One stderr line per load, naming the extensions.
+  if (restored.length > 0) {
+    console.error(`[opc] restored disabled state from .extension-state.json: ${restored.join(", ")} (use 'opc-harness init' to clear or set OPC_BREAKER_STATE=disabled)`);
+  }
+}
+
+export function saveBreakerState(flowDir, registry) {
+  if (!flowDir || !registry || !Array.isArray(registry.extensions)) return;
+  if (!breakerPersistenceEnabled()) return;
+
+  // U5.8r: read-modify-write rather than overwrite.
+  //   (a) Whitelist bypass (`--extensions a,b`) loads only a subset —
+  //       overwriting would silently wipe breaker snapshots for every
+  //       extension not in the whitelist.
+  //   (b) Forward-compat: a future v2 writer may add top-level fields; a
+  //       v1 writer should preserve them rather than clobber on round-trip.
+  const statePath = join(flowDir, BREAKER_STATE_FILE);
+  let existing = null;
+  if (existsSync(statePath)) {
+    try {
+      const raw = JSON.parse(readFileSync(statePath, "utf8"));
+      if (raw && typeof raw === "object" && raw.version === 1) existing = raw;
+    } catch { /* treat as no existing */ }
+  }
+
+  const extensions = existing && existing.extensions && typeof existing.extensions === "object"
+    ? { ...existing.extensions }
+    : {};
+  for (const ext of registry.extensions) {
+    extensions[ext.name] = {
+      enabled: ext.enabled !== false,
+      failStreak: ext._failStreak || 0,
+    };
+    if (ext.disabledReason) extensions[ext.name].disabledReason = ext.disabledReason;
+  }
+  const payload = {
+    ...(existing || {}),
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    extensions,
+  };
+  try {
+    // Ensure parent dir exists (extension-test may be invoked with a
+    // flowDir that hasn't been created by `init`).
+    mkdirSync(flowDir, { recursive: true });
+    atomicWriteSync(statePath, JSON.stringify(payload, null, 2) + "\n");
+  } catch (err) {
+    // Non-fatal — breaker falls back to in-memory only for this process.
+    console.error(`WARN: could not persist .extension-state.json: ${err.message}`);
+  }
+}
+
+export function clearBreakerState(flowDir) {
+  if (!flowDir) return;
+  const statePath = join(flowDir, BREAKER_STATE_FILE);
+  if (!existsSync(statePath)) return;
+  // U5.8r: delete the file rather than rewrite with empty extensions.
+  // "Missing file" and "empty file" should be semantically identical
+  // (loadBreakerState returns null for both), and delete-on-init is the
+  // clearer mental model — matches the file-lifecycle docs in §7.4.
+  try {
+    unlinkSync(statePath);
+  } catch (err) {
+    console.error(`WARN: could not clear .extension-state.json: ${err.message}`);
+  }
+}
+
+
+// ─── Path resolution ─────────────────────────────────────────────
+
+function resolveExtensionsDir(config = {}) {
+  return (
+    process.env.OPC_EXTENSIONS_DIR ||
+    config.extensionsDir ||
+    join(os.homedir(), ".claude", "skills", "opc-extension")
+  );
+}
+
+// ─── Bypass resolution (benchmark mode) ──────────────────────────
+//
+// Priority (highest wins):
+//   1. OPC_DISABLE_EXTENSIONS=1 env  → disable-all
+//   2. config.noExtensions === true (from CLI `--no-extensions`) → disable-all
+//   3. Array.isArray(config.extensionWhitelist) (from CLI `--extensions a,b`) → whitelist
+//   4. default → load all found extensions
+//
+// Returns one of:
+//   { mode: "disable-all", source: "env"|"flag" }
+//   { mode: "whitelist",   source: "flag", names: string[] }
+//   { mode: "default" }
+//
+// When mode !== "default", a one-line status is written to stderr unless
+// config.quietBypass === true (useful for tests).
+export function resolveBypass(config = {}) {
+  let decision;
+  if (process.env.OPC_DISABLE_EXTENSIONS === "1") {
+    decision = { mode: "disable-all", source: "env" };
+  } else if (config.noExtensions === true) {
+    decision = { mode: "disable-all", source: "flag" };
+  } else if (Array.isArray(config.extensionWhitelist)) {
+    decision = {
+      mode: "whitelist",
+      source: "flag",
+      names: config.extensionWhitelist.filter(n => typeof n === "string" && n.length > 0),
+    };
+  } else {
+    return { mode: "default" };
+  }
+  if (!config.quietBypass) {
+    if (decision.mode === "disable-all") {
+      console.error(`[opc] extensions disabled via ${decision.source === "env" ? "OPC_DISABLE_EXTENSIONS" : "--no-extensions"}`);
+    } else if (decision.mode === "whitelist") {
+      console.error(`[opc] extensions whitelisted via --extensions: ${decision.names.join(", ") || "(empty)"}`);
+    }
+  }
+  return decision;
+}
+
+// ─── Hook normalization (exported — single source of truth) ──────
+
+/**
+ * Normalize any hook format to { hooks: { "prompt.append"?, "verdict.append"?, "startup.check"?, "execute.run"?, "artifact.emit"? } }.
+ * Accepts both kebab (`prompt.append`, `execute.run`) and camel (`promptAppend`,
+ * `executeRun`) named exports, plus the legacy `{ hooks: { ... } }` default-export form.
+ */
+export function normalizeHook(raw, mod) {
+  if (raw && raw.hooks && typeof raw.hooks === "object") {
+    return raw;
+  }
+
+  const hooks = {};
+  const src = mod || raw;
+  if (typeof src.promptAppend === "function")   hooks["prompt.append"]   = src.promptAppend;
+  if (typeof src.verdictAppend === "function")  hooks["verdict.append"]  = src.verdictAppend;
+  if (typeof src.startupCheck === "function")   hooks["startup.check"]   = src.startupCheck;
+  if (typeof src.executeRun === "function")     hooks["execute.run"]     = src.executeRun;
+  if (typeof src.artifactEmit === "function")   hooks["artifact.emit"]   = src.artifactEmit;
+  if (typeof src.preflight === "function")       hooks["preflight"]       = src.preflight;
+  if (typeof src["prompt.append"] === "function")   hooks["prompt.append"]   = src["prompt.append"];
+  if (typeof src["verdict.append"] === "function")  hooks["verdict.append"]  = src["verdict.append"];
+  if (typeof src["startup.check"] === "function")   hooks["startup.check"]   = src["startup.check"];
+  if (typeof src["execute.run"] === "function")     hooks["execute.run"]     = src["execute.run"];
+  if (typeof src["artifact.emit"] === "function")   hooks["artifact.emit"]   = src["artifact.emit"];
+  if (typeof src["preflight"] === "function")       hooks["preflight"]       = src["preflight"];
+
+  return { hooks };
+}
+
+/**
+ * Normalize a finding to canonical shape { severity, category, message, file? }.
+ */
+function normalizeFinding(f) {
+  if (!f || typeof f !== "object") return null;
+  if (typeof f.severity === "string" && typeof f.category === "string" && typeof f.message === "string") {
+    return f;
+  }
+  if (typeof f.text === "string") {
+    let severity = "info";
+    if (f.emoji === "🔴") severity = "error";
+    else if (f.emoji === "🟡") severity = "warning";
+    const textContent = f.text.replace(/^\[.*?\]\s*/, "");
+    const colonIdx = textContent.indexOf(":");
+    const category = colonIdx > 0 ? textContent.slice(0, colonIdx).trim() : "unknown";
+    const message  = colonIdx > 0 ? textContent.slice(colonIdx + 1).trim() : textContent;
+    return { severity, category, message, ...(f.file ? { file: f.file } : {}) };
+  }
+  return null;
+}
+
+// ─── Hook invocation with timeout ────────────────────────────────
+
+function withTimeout(promise, ms, onTimeoutMessage) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new HookTimeoutError(onTimeoutMessage)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+// ─── Capability matching ─────────────────────────────────────────
+
+// ─── Capability versioning ───────────────────────────────────────
+//
+// Capability identifiers are strings of form `name@N` where name matches
+// /^[a-z][a-z0-9-]*$/ and N is a positive integer (1, 2, …; no leading zeros,
+// no @0). A bare `name` (no @N) is auto-upgraded to `name@1` with a one-time
+// stderr WARN per bare token
+// (so a project using 10 extensions with bare capabilities only prints each
+// warning once per process).
+//
+// Use normalizeCapability() on both sides (provides AND requires) so the
+// match is symmetric: a node requiring "foo" matches an ext providing "foo"
+// OR "foo@1", and vice versa.
+//
+// `meta.compatibleCapabilities: string[]` widens what an extension matches
+// without changing its canonical provides. Example: an extension upgrading
+// visual-check from @1 to @2 can declare compatibleCapabilities: ["visual-check@1"]
+// to keep firing for @1-declared nodes during migration.
+
+const CAPABILITY_VERSIONED_RE = /^[a-z][a-z0-9-]*@[1-9]\d*$/;
+const CAPABILITY_BARE_RE = /^[a-z][a-z0-9-]*$/;
+
+// Module-level set so warnings fire once per process per bare name.
+const _bareCapabilityWarnings = new Set();
+
+/** Test helper — clear warning cache so tests can assert each fire. */
+export function _resetBareCapabilityWarnings() {
+  _bareCapabilityWarnings.clear();
+}
+
+/**
+ * Normalize a capability string. Returns canonical `name@N` form.
+ * - `foo@2` → `foo@2` (unchanged)
+ * - `foo`   → `foo@1` (with one-time stderr WARN per bare name per process)
+ * - invalid → returned as-is (caller decides how to handle; matcher will simply not match)
+ */
+export function normalizeCapability(cap) {
+  if (typeof cap !== "string" || cap.length === 0) return cap;
+  if (CAPABILITY_VERSIONED_RE.test(cap)) return cap;
+  if (CAPABILITY_BARE_RE.test(cap)) {
+    if (!_bareCapabilityWarnings.has(cap)) {
+      _bareCapabilityWarnings.add(cap);
+      console.error(`[opc] WARN: capability '${cap}' missing version suffix — auto-upgrading to '${cap}@1'. Declare '${cap}@1' explicitly to silence this.`);
+    }
+    return `${cap}@1`;
+  }
+  return cap;
+}
+
+/**
+ * Lint a single capability string. Returns { ok, reason } describing whether
+ * the string matches the canonical `name@N` form or the bare `name` form.
+ * - ok=true, reason="versioned" → `foo@2`
+ * - ok=true, reason="bare" → `foo` (still valid, auto-upgrades to @1 with WARN)
+ * - ok=false, reason="not-a-string" | "empty" | "invalid-shape" → lint failure
+ *
+ * Used by `opc-harness extension-test` to surface authoring mistakes as WARN
+ * (not FAIL) before the extension is ever loaded by the harness.
+ */
+export function lintCapability(cap) {
+  if (typeof cap !== "string") return { ok: false, reason: "not-a-string" };
+  if (cap.length === 0) return { ok: false, reason: "empty" };
+  if (CAPABILITY_VERSIONED_RE.test(cap)) return { ok: true, reason: "versioned" };
+  if (CAPABILITY_BARE_RE.test(cap)) return { ok: true, reason: "bare" };
+  return { ok: false, reason: "invalid-shape" };
+}
+
+/**
+ * Return true if the extension should fire for the given node's capability requirements.
+ * - `requires` undefined/null/[] → NO extensions fire (node doesn't want any specialist)
+ * - ext.provides is empty ([]) → never fires (pure startup-check extension)
+ * - otherwise: fire if any (normalized) ext.provides OR ext.compatibleCapabilities ∈ (normalized) requires
+ */
+function extensionMatches(requires, provides, compatible) {
+  if (!Array.isArray(requires) || requires.length === 0) return false;
+  if (!Array.isArray(provides) || provides.length === 0) return false;
+  const reqSet = new Set(requires.map(normalizeCapability));
+  const provAll = [
+    ...provides,
+    ...(Array.isArray(compatible) ? compatible : []),
+  ].map(normalizeCapability);
+  return provAll.some(cap => reqSet.has(cap));
+}
+
+/**
+ * F2: WARN once per registry when ctx.nodeCapabilities is unset/empty.
+ * Mutates registry._warnedMissingCaps = true on first fire. Silent thereafter.
+ * Short-circuits when registry has zero extensions — no one is listening.
+ */
+function warnMissingNodeCapsOnce(registry, context) {
+  if (!registry || typeof registry !== "object") return;
+  if (registry._warnedMissingCaps) return;
+  if (!Array.isArray(registry.extensions) || registry.extensions.length === 0) return;
+  // F10: when caps were deliberately resolved from a flow template, an empty/absent
+  // caps list is LEGITIMATE (the node simply declares no requirements — e.g. gate or
+  // test-design nodes, or a template with no nodeCapabilities map at all). The CLI sets
+  // this flag once it has resolved a template; raw library callers (the F2 "forgot to
+  // pass caps" path) do not set it, so they still warn.
+  if (context?.nodeCapabilitiesResolved) return;
+  const caps = context?.nodeCapabilities;
+  if (Array.isArray(caps) && caps.length > 0) return;
+  const names = registry.extensions.map(e => e.name).filter(Boolean).slice(0, 5).join(", ");
+  const suffix = names ? ` — loaded extensions (${names}) won't match anything.` : "";
+  console.error(
+    `[extensions] WARN: ctx.nodeCapabilities not set — no hooks will match.${suffix} ` +
+    `Set nodeCapabilities in your flow template or pass it in the harness CLI context.`
+  );
+  registry._warnedMissingCaps = true;
+}
+
+function readExtensionManifest(extDir) {
+  const manifestPath = join(extDir, "ext.json");
+  if (!existsSync(manifestPath)) return {};
+  try {
+    const parsed = JSON.parse(readFileSync(manifestPath, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (err) {
+    console.error(`WARN: could not read extension manifest ${manifestPath}: ${err.message}`);
+    return {};
+  }
+}
+
+function mergeManifestMeta(hookMeta, manifest) {
+  const manifestMeta = manifest.meta && typeof manifest.meta === "object" && !Array.isArray(manifest.meta) ? manifest.meta : {};
+  const runtimeMeta = hookMeta && typeof hookMeta === "object" && !Array.isArray(hookMeta) ? hookMeta : {};
+  const meta = { ...manifestMeta, ...runtimeMeta };
+  if (meta.version === undefined && manifest.version !== undefined) {
+    meta.version = manifest.version;
+  }
+  if (meta.description === undefined && manifest.description !== undefined) {
+    meta.description = manifest.description;
+  }
+  return meta;
+}
+
+// ─── loadExtensions ──────────────────────────────────────────────
+
+/**
+ * Load all extensions from extensionsDir.
+ * Scans for subdirs that contain hook.mjs. Skips dotfiles silently.
+ */
+export async function loadExtensions(config = {}) {
+  // Benchmark bypass: short-circuit BEFORE scanning disk or evaluating required set.
+  // Required extensions are explicitly waived under bypass — this is by design: a
+  // benchmark run must be reproducible without any private extension installed.
+  const bypass = resolveBypass(config);
+  if (bypass.mode === "disable-all") {
+    return { extensions: [], applied: [], failures: [] };
+  }
+
+  const extensionsDir = resolveExtensionsDir(config);
+  const required = new Set(Array.isArray(config.requiredExtensions) ? config.requiredExtensions : []);
+  const orderOverride = Array.isArray(config.extensionOrder) ? config.extensionOrder : null;
+  const whitelist = bypass.mode === "whitelist" ? new Set(bypass.names) : null;
+
+  if (!existsSync(extensionsDir)) {
+    if (required.size > 0) {
+      const missing = [...required][0];
+      throw new Error(`FATAL: required extension '${missing}' missing or failed startup.check`);
+    }
+    return { extensions: [], applied: [], failures: [] };
+  }
+
+  let entries;
+  try {
+    entries = await readdir(extensionsDir, { withFileTypes: true });
+  } catch {
+    if (required.size > 0) {
+      const missing = [...required][0];
+      throw new Error(`FATAL: required extension '${missing}' missing or failed startup.check`);
+    }
+    return { extensions: [], applied: [], failures: [] };
+  }
+
+  // Only consider subdirs that:
+  //   1. Are not dotfiles (filter .git, .DS_Store, etc. — not extensions)
+  //   2. Contain a hook.mjs file (anything else is not an extension)
+  //   3. Are in the whitelist (if --extensions was given)
+  let found = entries
+    .filter(e => e.isDirectory() && !e.name.startsWith("."))
+    .filter(e => existsSync(join(extensionsDir, e.name, "hook.mjs")))
+    .map(e => e.name);
+
+  if (whitelist) {
+    found = found.filter(n => whitelist.has(n));
+  }
+
+  for (const name of required) {
+    if (!found.includes(name)) {
+      throw new Error(`FATAL: required extension '${name}' missing or failed startup.check`);
+    }
+  }
+
+  let ordered;
+  if (orderOverride) {
+    const extras = found.filter(n => !orderOverride.includes(n)).sort();
+    ordered = [...orderOverride.filter(n => found.includes(n)), ...extras];
+  } else {
+    ordered = found.slice().sort();
+  }
+
+  const extensions = [];
+  const applied = [];
+  const startupFailures = [];
+
+  for (const name of ordered) {
+    const extDir = join(extensionsDir, name);
+    const hookPath = join(extDir, "hook.mjs");
+    const promptPath = join(extDir, "prompt.md");
+    const isRequired = required.has(name);
+
+    let mod = null;
+    try {
+      mod = await import(hookPath);
+    } catch (err) {
+      if (isRequired) {
+        throw new Error(`FATAL: required extension '${name}' missing or failed startup.check`);
+      }
+      console.error(`WARN: optional extension ${name} failed to load:`, err.message);
+      startupFailures.push(startupFailureEntry(name, "load-error", err.message));
+      continue;
+    }
+
+    const raw = mod.default || mod;
+    const hook = normalizeHook(raw, mod);
+    const manifest = readExtensionManifest(extDir);
+
+    // Read meta — supports named `export const meta` or `default.meta`
+    const hookMeta = mod.meta || (mod.default && mod.default.meta) || {};
+    const meta = mergeManifestMeta(hookMeta, manifest);
+
+    // Validate meta.provides shape (capability contract)
+    let provides = meta.provides;
+    if (provides === undefined) provides = [];
+    if (!Array.isArray(provides)) {
+      console.error(`WARN: extension ${name} meta.provides is not an array — treating as []`);
+      provides = [];
+    }
+    meta.provides = provides;
+
+    // Validate optional meta.compatibleCapabilities (U1.2 — capability versioning)
+    let compatible = meta.compatibleCapabilities;
+    if (compatible === undefined) compatible = [];
+    if (!Array.isArray(compatible)) {
+      console.error(`WARN: extension ${name} meta.compatibleCapabilities is not an array — treating as []`);
+      compatible = [];
+    }
+    meta.compatibleCapabilities = compatible;
+
+    let promptMd = "";
+    if (existsSync(promptPath)) {
+      try { promptMd = readFileSync(promptPath, "utf8"); } catch { /* best effort */ }
+    }
+
+    if (typeof hook.hooks["startup.check"] === "function") {
+      try {
+        const checkResult = await withTimeout(
+          Promise.resolve(hook.hooks["startup.check"]({})),
+          HOOK_TIMEOUT_MS,
+          `startup.check timed out after ${HOOK_TIMEOUT_MS}ms`
+        );
+        // Capture disabledCapabilities from startupCheck result
+        if (checkResult && Array.isArray(checkResult.disabledCapabilities)) {
+          meta._disabledCapabilities = checkResult.disabledCapabilities;
+        }
+        if (checkResult && checkResult.ok === false) {
+          const reason = startupCheckReason(checkResult);
+          if (isRequired) {
+            throw new Error(`startup.check returned ok:false${reason}`);
+          }
+          console.error(`WARN: optional extension ${name} startup.check returned ok:false${reason}`);
+          startupFailures.push(startupFailureEntry(name, "ok-false", `startup.check returned ok:false${reason}`, meta));
+          continue;
+        }
+      } catch (err) {
+        if (isRequired) {
+          const detail = err?.message ? `: ${err.message}` : "";
+          throw new Error(`FATAL: required extension '${name}' missing or failed startup.check${detail}`);
+        }
+        console.error(`WARN: optional extension ${name} startup.check failed:`, err.message);
+        startupFailures.push(startupFailureEntry(
+          name,
+          isHookTimeoutError(err) ? "timeout" : "throw",
+          err.message,
+          meta
+        ));
+        continue;
+      }
+    }
+
+    // Remove disabled capabilities from provides (e.g., VLM missing → visual-consistency-check@1 disabled)
+    if (Array.isArray(meta._disabledCapabilities) && meta._disabledCapabilities.length > 0) {
+      const disabled = new Set(meta._disabledCapabilities.map(normalizeCapability));
+      for (const cap of meta._disabledCapabilities) {
+        startupFailures.push(startupFailureEntry(name, "capability-disabled", `startup.check disabled ${cap}`, {
+          provides: [cap],
+          _disabledCapabilities: [cap],
+        }));
+      }
+      meta.provides = (meta.provides || []).filter(cap => !disabled.has(normalizeCapability(cap)));
+      console.error(`[extensions] ${name}: disabled capabilities: ${meta._disabledCapabilities.join(", ")}`);
+    }
+
+    extensions.push({ name, promptMd, hook, meta, enabled: true });
+    applied.push(name);
+  }
+
+  for (const name of required) {
+    if (!applied.includes(name)) {
+      throw new Error(`FATAL: required extension '${name}' missing or failed startup.check`);
+    }
+  }
+
+  const registry = { extensions, applied, failures: [], startupFailures };
+
+  // F5 / U5.7: apply persisted circuit-breaker state from <flowDir>/.extension-state.json.
+  // Record flowDir on the registry so fire* hooks can re-persist after updates.
+  if (config.flowDir) {
+    registry._flowDir = config.flowDir;
+    try {
+      const snap = loadBreakerState(config.flowDir);
+      if (snap) applyBreakerState(registry, snap);
+    } catch (err) {
+      console.error(`WARN: failed to apply breaker state: ${err.message}`);
+    }
+  }
+
+  return registry;
+}
+
+// ─── firePromptAppend ────────────────────────────────────────────
+
+/**
+ * Call prompt.append on extensions whose `provides` matches context.nodeCapabilities.
+ */
+export async function firePromptAppend(registry, context) {
+  const parts = [];
+  warnMissingNodeCapsOnce(registry, context);
+  const requires = context.nodeCapabilities || [];
+
+  for (const ext of registry.extensions) {
+    if (!ext.enabled) continue;
+    if (!extensionMatches(requires, ext.meta.provides, ext.meta.compatibleCapabilities)) continue;
+
+    const fn = ext.hook?.hooks?.["prompt.append"];
+    if (typeof fn !== "function") continue;
+
+    try {
+      const result = await withTimeout(
+        Promise.resolve(fn(context)),
+        HOOK_TIMEOUT_MS,
+        `prompt.append timed out after ${HOOK_TIMEOUT_MS}ms`
+      );
+      if (result === undefined || result === null || result === "") {
+        recordSuccess(ext);
+        continue;
+      }
+      if (typeof result !== "string") {
+        console.error(`WARN: extension ${ext.name} prompt.append returned ${typeof result}, expected string — ignoring`);
+        recordFailure(registry, ext, "prompt.append", "bad-return", `returned ${typeof result}, expected string`);
+        continue;
+      }
+      parts.push(result);
+      recordSuccess(ext);
+    } catch (err) {
+      console.error(`WARN: extension ${ext.name} prompt.append failed:`, err.message);
+      const kind = isHookTimeoutError(err) ? "timeout" : "throw";
+      recordFailure(registry, ext, "prompt.append", kind, err.message);
+    }
+  }
+  if (registry._flowDir) saveBreakerState(registry._flowDir, registry);
+  return parts.join("\n\n");
+}
+
+// ─── fireVerdictAppend ───────────────────────────────────────────
+
+/**
+ * Call verdict.append on extensions whose `provides` matches context.nodeCapabilities.
+ * Writes findings to {context.runDir}/eval-extensions.md.
+ *
+ * Returns `{ findings, filePath, jsonPath }`:
+ *   - `findings`: array of normalized findings, each tagged with `_ext` (string,
+ *     the extension's directory/name) so callers can attribute which extension
+ *     produced which finding. The `_ext` key is part of the public return
+ *     contract — not a private field — callers may read it.
+ *   - `filePath`: absolute path to the written `eval-extensions.md`, or `null`
+ *     when `context.runDir` is not set (findings still collected in-memory).
+ *   - `jsonPath`: absolute path to the canonical `eval-extensions.json` sidecar
+ *     (F4). Markdown at `filePath` is derived from this JSON. Schema v1:
+ *     `{ version: 1, generatedAt, extensionsLoaded[], findings[] }`. `null`
+ *     when `context.runDir` is not set.
+ */
+export async function fireVerdictAppend(registry, context) {
+  const allFindings = [];
+  warnMissingNodeCapsOnce(registry, context);
+  const requires = context.nodeCapabilities || [];
+
+  for (const ext of registry.extensions) {
+    if (!ext.enabled) continue;
+    if (!extensionMatches(requires, ext.meta.provides, ext.meta.compatibleCapabilities)) continue;
+
+    const fn = ext.hook?.hooks?.["verdict.append"];
+    if (typeof fn !== "function") continue;
+
+    try {
+      const findings = await withTimeout(
+        Promise.resolve(fn(context)),
+        HOOK_TIMEOUT_MS,
+        `verdict.append timed out after ${HOOK_TIMEOUT_MS}ms`
+      );
+      if (findings === undefined || findings === null) {
+        recordSuccess(ext);
+        continue;
+      }
+      if (!Array.isArray(findings)) {
+        console.error(`WARN: extension ${ext.name} verdict.append returned ${typeof findings}, expected array — ignoring`);
+        recordFailure(registry, ext, "verdict.append", "bad-return", `returned ${typeof findings}, expected array`);
+        continue;
+      }
+      for (const raw of findings) {
+        const normalized = normalizeFinding(raw);
+        if (normalized) allFindings.push({ ...normalized, _ext: ext.name });
+      }
+      recordSuccess(ext);
+    } catch (err) {
+      console.error(`WARN: extension ${ext.name} verdict.append failed:`, err.message);
+      const kind = isHookTimeoutError(err) ? "timeout" : "throw";
+      recordFailure(registry, ext, "verdict.append", kind, err.message);
+    }
+  }
+
+  if (!context.runDir) return { findings: allFindings, filePath: null, jsonPath: null };
+
+  mkdirSync(context.runDir, { recursive: true });
+
+  // F4 — canonical JSON sidecar. Markdown is derived from this JSON.
+  // Schema v1 is the public contract; tooling may depend on these field names.
+  // Design notes:
+  //   - `generatedAt` is ISO-8601 UTC (ends with `Z`). Consumers doing golden /
+  //     snapshot comparisons should ignore this field or stub Date.
+  //   - `extensionsLoaded[].enabled` reflects live circuit-breaker state at
+  //     dispatch time: `false` means the extension was loaded but tripped and
+  //     therefore did NOT fire for this call.
+  //   - `findings[].extension` is the on-disk field name. In-memory,
+  //     `fireVerdictAppend` returns `findings[]._ext` — same concept, two
+  //     names: `_ext` for JS callers (pre-F1 contract), `extension` for JSON
+  //     consumers (clean schema). Don't rename either without a v2 bump.
+  const jsonPath = join(context.runDir, "eval-extensions.json");
+  const jsonDoc = {
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    extensionsLoaded: registry.extensions.map((e) => ({
+      name: e.name,
+      enabled: e.enabled !== false,
+    })),
+    findings: allFindings.map((f) => ({
+      extension: f._ext,
+      severity: f.severity,
+      category: f.category,
+      message: f.message,
+      ...(f.file ? { file: f.file } : {}),
+    })),
+  };
+  atomicWriteSync(jsonPath, JSON.stringify(jsonDoc, null, 2) + "\n");
+
+  // Markdown view — derived from jsonDoc, kept back-compat.
+  const filePath = join(context.runDir, "eval-extensions.md");
+  atomicWriteSync(filePath, renderEvalMarkdown(jsonDoc));
+
+  // Sibling failure report — observable signal for the gate.
+  // Always written when runDir is set (empty file means "no failures this run").
+  // Filename intentionally lacks the `eval-` prefix so synthesize's `eval*.md`
+  // ingestion does NOT pick it up — the failure report is infrastructure
+  // signal, not a role evaluation, and should not trip thin-eval guards.
+  writeFailureReport(registry, context.runDir);
+
+  if (registry._flowDir) saveBreakerState(registry._flowDir, registry);
+
+  return { findings: allFindings, filePath, jsonPath };
+}
+
+/**
+ * Render the canonical JSON doc as the legacy markdown view.
+ * Public contract: markdown is derived — JSON is the source of truth.
+ *
+ * Exported for golden tests and for callers that want to preview markdown
+ * without writing to disk. Note the `<!-- derived -->` banner — hand edits
+ * will be overwritten on the next fireVerdictAppend.
+ */
+export function renderEvalMarkdown(jsonDoc) {
+  const lines = [
+    "<!-- derived from eval-extensions.json — edits here will be overwritten -->",
+    "# Extension Findings",
+    "",
+  ];
+  for (const f of jsonDoc.findings) {
+    const emoji = f.severity === "error" ? "🔴" : f.severity === "warning" ? "🟡" : "🔵";
+    const filePart = f.file ? ` in ${f.file}` : "";
+    lines.push(`${emoji} ${f.category}: ${f.message}${filePart}`);
+  }
+  if (jsonDoc.findings.length === 0) {
+    lines.push("🔵 extensions: No extension findings");
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+// ─── fireExecuteRun ──────────────────────────────────────────────
+
+/**
+ * Call `execute.run` on extensions whose `provides` matches context.nodeCapabilities.
+ *
+ * Execute hooks are fire-and-forget: they can return any value (ignored) and
+ * exist to let extensions run side-effectful verification during executor
+ * nodes (e.g. crawl a URL, run Playwright, hit an API). Failures are isolated
+ * exactly like prompt/verdict: recorded in registry.failures[], throwing
+ * extension does not block siblings, circuit-breaker still trips after N in a
+ * row. Return value shape is not enforced — extensions may return strings /
+ * objects / undefined.
+ */
+export async function fireExecuteRun(registry, context) {
+  const results = [];
+  warnMissingNodeCapsOnce(registry, context);
+  const requires = context.nodeCapabilities || [];
+
+  for (const ext of registry.extensions) {
+    if (!ext.enabled) continue;
+    if (!extensionMatches(requires, ext.meta.provides, ext.meta.compatibleCapabilities)) continue;
+
+    const fn = ext.hook?.hooks?.["execute.run"];
+    if (typeof fn !== "function") continue;
+
+    try {
+      const result = await withTimeout(
+        Promise.resolve(fn(context)),
+        HOOK_TIMEOUT_MS,
+        `execute.run timed out after ${HOOK_TIMEOUT_MS}ms`
+      );
+      results.push({ ext: ext.name, result });
+      recordSuccess(ext);
+    } catch (err) {
+      console.error(`WARN: extension ${ext.name} execute.run failed:`, err.message);
+      const kind = isHookTimeoutError(err) ? "timeout" : "throw";
+      recordFailure(registry, ext, "execute.run", kind, err.message);
+    }
+  }
+  if (registry._flowDir) saveBreakerState(registry._flowDir, registry);
+  return results;
+}
+
+// ─── fireArtifactEmit ────────────────────────────────────────────
+
+/**
+ * Call `artifact.emit` on matching extensions. Each extension may return an
+ * array of `{ name: string, content: string|Buffer }`. Files are written to
+ * `<runDir>/ext-<extName>/<name>`; a summary array of
+ * `{ type: "ext-artifact", ext, path }` entries is returned and can be
+ * merged into `handshake.artifacts[]` by the caller.
+ *
+ * Safety: `name` is basename()'d before joining. Any `name` that contains a
+ * path separator, `..`, or is empty after normalization is skipped with a WARN
+ * — extensions never write outside their per-ext subdir.
+ */
+export async function fireArtifactEmit(registry, context) {
+  const emitted = [];
+  warnMissingNodeCapsOnce(registry, context);
+  const requires = context.nodeCapabilities || [];
+  if (!context.runDir) return emitted;
+
+  const { basename } = await import("path");
+
+  for (const ext of registry.extensions) {
+    if (!ext.enabled) continue;
+    if (!extensionMatches(requires, ext.meta.provides, ext.meta.compatibleCapabilities)) continue;
+
+    const fn = ext.hook?.hooks?.["artifact.emit"];
+    if (typeof fn !== "function") continue;
+
+    let items;
+    try {
+      items = await withTimeout(
+        Promise.resolve(fn(context)),
+        HOOK_TIMEOUT_MS,
+        `artifact.emit timed out after ${HOOK_TIMEOUT_MS}ms`
+      );
+      if (items === undefined || items === null) { recordSuccess(ext); continue; }
+      if (!Array.isArray(items)) {
+        console.error(`WARN: extension ${ext.name} artifact.emit returned ${typeof items}, expected array — ignoring`);
+        recordFailure(registry, ext, "artifact.emit", "bad-return", `returned ${typeof items}, expected array`);
+        continue;
+      }
+    } catch (err) {
+      console.error(`WARN: extension ${ext.name} artifact.emit failed:`, err.message);
+      const kind = isHookTimeoutError(err) ? "timeout" : "throw";
+      recordFailure(registry, ext, "artifact.emit", kind, err.message);
+      continue;
+    }
+
+    const extDir = join(context.runDir, `ext-${ext.name}`);
+    mkdirSync(extDir, { recursive: true });
+    let anyItemFailed = false;
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      const rawName = item.name;
+      if (typeof rawName !== "string" || rawName.length === 0) {
+        console.error(`WARN: extension ${ext.name} artifact.emit item missing string 'name' — skipping`);
+        continue;
+      }
+      const safeName = basename(rawName);
+      if (safeName !== rawName || safeName === "" || safeName === "." || safeName === "..") {
+        console.error(`WARN: extension ${ext.name} artifact.emit name '${rawName}' is not a plain basename — skipping`);
+        continue;
+      }
+      const content = item.content;
+      // Accept string, Buffer, or any ArrayBufferView (Uint8Array, DataView, etc.)
+      // Modern APIs (crypto.subtle, TextEncoder, Playwright screenshots) commonly
+      // return Uint8Array — tight Buffer check would silently drop those.
+      const isBinaryView = ArrayBuffer.isView(content);
+      if (typeof content !== "string" && !isBinaryView) {
+        console.error(`WARN: extension ${ext.name} artifact.emit '${rawName}' content is not string/Buffer/ArrayBufferView — skipping`);
+        continue;
+      }
+      const payload = typeof content === "string" || Buffer.isBuffer(content)
+        ? content
+        : Buffer.from(content.buffer, content.byteOffset, content.byteLength);
+      const outPath = join(extDir, safeName);
+      try {
+        atomicWriteSync(outPath, payload);
+        emitted.push({ type: "ext-artifact", ext: ext.name, path: outPath });
+      } catch (err) {
+        console.error(`WARN: extension ${ext.name} artifact.emit write failed for '${safeName}': ${err.message}`);
+        recordFailure(registry, ext, "artifact.emit", "throw", `write ${safeName}: ${err.message}`);
+        anyItemFailed = true;
+      }
+    }
+    // Only reset _failStreak if every item in this call succeeded. Otherwise
+    // a per-item write failure would be undone by recordSuccess on the same
+    // iteration and the circuit-breaker would never trip on persistent
+    // write failures (U1.6r semantics F1 fix-forward).
+    if (!anyItemFailed) recordSuccess(ext);
+  }
+  if (registry._flowDir) saveBreakerState(registry._flowDir, registry);
+  return emitted;
+}
+
+// ─── fireNodePreflight ──────────────────────────────────────────
+
+/**
+ * Call `preflight` on extensions whose `provides` matches context.nodeCapabilities.
+ * Preflight runs BEFORE a build node. Extensions return data, core writes artifacts.
+ *
+ * Each extension returns an object with a `type` field that determines which
+ * artifact writer is invoked. Currently supported types:
+ *   - "design" → writes design-mode.json, design-selection.json, design-brief.md,
+ *                 design-tokens.json to context.flowDir
+ *
+ * Returns array of `{ ...result, _ext }` objects (one per extension that fired).
+ */
+export async function fireNodePreflight(registry, context) {
+  const results = [];
+  warnMissingNodeCapsOnce(registry, context);
+  const requires = context.nodeCapabilities || [];
+
+  for (const ext of registry.extensions) {
+    if (!ext.enabled) continue;
+    if (!extensionMatches(requires, ext.meta.provides, ext.meta.compatibleCapabilities)) continue;
+
+    const fn = ext.hook?.hooks?.["preflight"];
+    if (typeof fn !== "function") continue;
+
+    try {
+      const result = await withTimeout(
+        Promise.resolve(fn(context)),
+        HOOK_TIMEOUT_MS,
+        `preflight timed out after ${HOOK_TIMEOUT_MS}ms`
+      );
+      if (result === undefined || result === null) {
+        recordSuccess(ext);
+        continue;
+      }
+      if (typeof result !== "object" || Array.isArray(result)) {
+        console.error(`WARN: extension ${ext.name} preflight returned ${typeof result}, expected object — ignoring`);
+        recordFailure(registry, ext, "preflight", "bad-return", `returned ${typeof result}, expected object`);
+        continue;
+      }
+      results.push({ ...result, _ext: ext.name });
+      recordSuccess(ext);
+    } catch (err) {
+      console.error(`WARN: extension ${ext.name} preflight failed:`, err.message);
+      const kind = isHookTimeoutError(err) ? "timeout" : "throw";
+      recordFailure(registry, ext, "preflight", kind, err.message);
+    }
+  }
+
+  // Write artifacts per type to the flow (session) directory.
+  // Isolated: a write failure for one result doesn't block siblings or
+  // prevent saveBreakerState from running.
+  if (context.flowDir) {
+    for (const result of results) {
+      if (result.type === "design") {
+        try {
+          writeDesignArtifacts(result, context.flowDir);
+        } catch (err) {
+          console.error(`WARN: writeDesignArtifacts failed for ${result._ext}: ${err.message}`);
+        }
+      } else if (result.type) {
+        console.error(`WARN: unknown preflight result type '${result.type}' from ${result._ext} — skipping artifact write`);
+      }
+    }
+  }
+
+  if (registry._flowDir) saveBreakerState(registry._flowDir, registry);
+  return results;
+}
+
+/**
+ * Write design-related preflight artifacts to the session directory.
+ * Called by fireNodePreflight for results with type: "design".
+ *
+ * Writes up to 4 files:
+ *   - design-mode.json — activation mode + confidence
+ *   - design-selection.json — style inference result
+ *   - design-brief.md — human-readable prompt injection
+ *   - design-tokens.json — machine-readable CSS tokens
+ *
+ * Missing optional fields are silently skipped (no partial file writes).
+ */
+export function writeDesignArtifacts(preflightResult, sessionDir) {
+  mkdirSync(sessionDir, { recursive: true });
+
+  const diState = preflightResult.diState && typeof preflightResult.diState === "object"
+    ? preflightResult.diState
+    : { version: 1, preflight: { confidence: preflightResult.confidence || 0, reason: preflightResult.reason || "" } };
+  writeDiStateArtifact(sessionDir, diState);
+  if (diState.preflight?.status === "no-task") return;
+
+  // design-mode.json — always written (contains the activation decision)
+  // Mode semantics:
+  //   "explicit" — user explicitly set design tokens (userOverride=true)
+  //   "auto" — inferred from task. Confidence controls eval strictness:
+  //            >0.8 strict, 0.4-0.8 moderate, <0.4 general-only
+  //   "off" — only if extension explicitly returns mode="off"
+  const designMode = {
+    mode: preflightResult.userOverride ? "explicit"
+      : (preflightResult.mode === "off" ? "off" : "auto"),
+    source: preflightResult.userOverride ? "user-override" : "inferred",
+    confidence: typeof preflightResult.confidence === "number" ? preflightResult.confidence : 0,
+    reason: preflightResult.reason || "",
+    userOverride: !!preflightResult.userOverride,
+    persist: !!preflightResult.persist,
+  };
+  atomicWriteSync(join(sessionDir, "design-mode.json"), JSON.stringify(designMode, null, 2) + "\n");
+
+  // design-selection.json — the full style inference output
+  if (preflightResult.selection && typeof preflightResult.selection === "object") {
+    atomicWriteSync(
+      join(sessionDir, "design-selection.json"),
+      JSON.stringify(preflightResult.selection, null, 2) + "\n"
+    );
+  }
+
+  // design-brief.md — markdown for prompt injection
+  if (typeof preflightResult.brief === "string" && preflightResult.brief.length > 0) {
+    atomicWriteSync(join(sessionDir, "design-brief.md"), preflightResult.brief);
+  }
+
+  // design-tokens.json — CSS-consumable token map
+  if (preflightResult.tokens && typeof preflightResult.tokens === "object") {
+    atomicWriteSync(
+      join(sessionDir, "design-tokens.json"),
+      JSON.stringify(preflightResult.tokens, null, 2) + "\n"
+    );
+  }
+}
+
+function writeDiStateArtifact(sessionDir, diState) {
+  atomicWriteSync(
+    join(sessionDir, "di-state.json"),
+    JSON.stringify({ version: 1, ...diState, updatedAt: new Date().toISOString() }, null, 2) + "\n"
+  );
+}
+
+// ─── Failure report ──────────────────────────────────────────────
+
+/**
+ * Write registry.failures[] to {runDir}/extension-failures.md.
+ * Filename has NO `eval-` prefix on purpose: the synthesize command ingests
+ * `eval*.md` as role evaluations, which would trip thin-eval / no-code-refs
+ * guards on every failure-bearing run. The orchestrator surfaces this file
+ * through a separate path (gate hook), not via synthesize.
+ */
+export function writeFailureReport(registry, runDir) {
+  if (!runDir) return;
+  const failures = Array.isArray(registry.failures) ? registry.failures : [];
+  const dropped = registry.failuresDropped || 0;
+  const reportPath = join(runDir, "extension-failures.md");
+  const sidecarPath = join(runDir, "extension-failures.json");
+
+  // U2.8c: Cross-command merge (G3) via JSON sidecar.
+  //
+  // Previous attempt parsed the markdown via regex; that was fragile (missing
+  // /u flag for emoji, ambiguous ext.hook split on dots) and silently
+  // degenerated to overwrite. The structurally correct fix is to keep the
+  // canonical record in a machine-readable JSON sidecar and render the
+  // markdown view from JSON. Parser/writer skew becomes impossible.
+  //
+  // Each CLI invocation reads the sidecar, unions with this run's
+  // registry.failures (dedup on ext|hook|kind|message), then writes BOTH
+  // sidecar + markdown atomically.
+  let priorEntries = [];
+  let priorDropped = 0;
+  if (existsSync(sidecarPath)) {
+    try {
+      const data = JSON.parse(readFileSync(sidecarPath, "utf8"));
+      if (Array.isArray(data.failures)) priorEntries = data.failures;
+      if (typeof data.droppedTotal === "number") priorDropped = data.droppedTotal;
+    } catch { /* corrupt sidecar = treat as empty, will be overwritten */ }
+  }
+
+  // U2.8e (#2): use JSON.stringify on a tuple instead of `|`-joined string —
+  // dedup key is unambiguous even if any field contains `|`.
+  const seen = new Set();
+  const merged = [];
+  for (const e of [...priorEntries, ...failures]) {
+    if (!e || typeof e !== "object") continue;
+    const key = JSON.stringify([e.ext, e.hook, e.kind, e.message]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(e);
+  }
+
+  // U2.8e (#5): droppedTotal accumulates across CLI invocations (cap-overflow
+  // is a monotonically growing signal — overwriting with the current call's
+  // dropped count silently loses prior drops).
+  const droppedTotal = priorDropped + dropped;
+
+  // Sidecar = source of truth.
+  const sidecar = { failures: merged, droppedTotal };
+  mkdirSync(runDir, { recursive: true });
+  atomicWriteSync(sidecarPath, JSON.stringify(sidecar, null, 2));
+
+  // Markdown = derived view for human/grep consumption.
+  const lines = ["# Extension Hook Failures", ""];
+  if (merged.length === 0) {
+    lines.push("🔵 extension-failures: No hook failures recorded");
+  } else {
+    if (droppedTotal > 0) {
+      lines.push(`> Note: ${droppedTotal} earlier failure record(s) dropped (cap=${FAILURE_LOG_CAP}).`);
+      lines.push("");
+    }
+    for (const f of merged) {
+      const emoji = f.kind === "disabled" ? "🔴" : "🟡";
+      lines.push(`${emoji} ${f.ext}.${f.hook} [${f.kind}] ${f.message} @ ${f.at}`);
+    }
+  }
+  lines.push("");
+  atomicWriteSync(reportPath, lines.join("\n"));
+}
+
+// ─── Survivors (post-breaker filter for handshake stamping) ──────
+//
+// `registry.applied` is the LOAD-TIME snapshot — every extension that
+// successfully loaded, regardless of subsequent breaker trips. For
+// `handshake.extensionsApplied` we want SURVIVORS (still-enabled at the
+// moment of stamping) so a downstream gate / human review sees who
+// actually contributed, not who tried to.
+export function survivingExtensions(registry) {
+  if (!registry || !Array.isArray(registry.extensions)) return [];
+  return registry.extensions
+    .filter((e) => e && e.enabled !== false)
+    .map((e) => e.name);
+}
+
+// ─── Strict mode (CI enforcement) ────────────────────────────────
+// OPC_STRICT_EXTENSIONS=1 turns recorded extension hook failures into a
+// non-zero process exit. Default mode isolates failures (per-extension
+// breaker) and returns 0 — strict mode preserves the same isolation +
+// breaker behavior but signals failure to the caller (CI build).
+//
+// Contract:
+//   - Called AFTER hooks fire and AFTER writeFailureReport / eval-extensions.md
+//     are written. Isolation invariant: healthy siblings' outputs are already
+//     recorded by the time strict checks failures.
+//   - No-op when env != "1" (zero overhead in default mode).
+//   - No-op when registry.failures is empty (no false positives on clean runs).
+//   - Emits one stderr line per recorded failure naming STRICT mode + the
+//     extension + the hook so operators can diagnose CI breakage at a glance.
+//   - Exits with code 2 (distinguishes strict-trip from generic CLI errors
+//     which use exit 1).
+export function strictModeEnabled() {
+  return process.env.OPC_STRICT_EXTENSIONS === "1";
+}
+
+export function enforceStrictMode(registry) {
+  if (!strictModeEnabled()) return;
+  const failures = Array.isArray(registry?.failures) ? registry.failures : [];
+  if (failures.length === 0) return;
+  for (const f of failures) {
+    console.error(`[opc] STRICT: ${f.ext} failed ${f.hook} — exiting non-zero`);
+  }
+  process.exit(2);
+}
+
+// ─── Registry cache helpers ──────────────────────────────────────
+
+export function saveRegistryCache(dir, registry) {
+  const cachePath = join(dir, ".ext-registry.json");
+  const data = {
+    applied: registry.applied,
+    startupFailures: Array.isArray(registry.startupFailures) ? registry.startupFailures : [],
+    timestamp: new Date().toISOString(),
+    bypass: registry.bypass || null,
+  };
+  atomicWriteSync(cachePath, JSON.stringify(data, null, 2) + "\n");
+}
+
+export function readRegistryApplied(dir) {
+  const cachePath = join(dir, ".ext-registry.json");
+  if (!existsSync(cachePath)) return [];
+  try {
+    return JSON.parse(readFileSync(cachePath, "utf8")).applied || [];
+  } catch { return []; }
+}

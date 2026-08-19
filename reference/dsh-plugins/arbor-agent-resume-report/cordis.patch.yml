@@ -1,0 +1,12 @@
+# arbor-agent-resume-report — 明月技能 → dsh 插件(自动生成,2026-08-16)
+# 转换自: skills/arbor-agent-resume-report/SKILL.md
+# 安装: cd /opt/dsh && pnpm add /root/.openclaw/workspace/reference/dsh-plugins/arbor-agent-resume-report   (或 dsh plugin add /root/.openclaw/workspace/reference/dsh-plugins/arbor-agent-resume-report)
+# 加载: dsh --profile headless --patch /root/.openclaw/workspace/reference/dsh-plugins/arbor-agent-resume-report/cordis.patch.yml "<任务>"
+
+- insert:
+    - id: skill-arbor-agent-resume-report
+      name: '@deepseek-ai/dsh-skill-arbor-agent-resume-report'
+      config:
+        skill: 'arbor-agent-resume-report'
+        description: 'name: arbor-agent-resume-report'
+        source: skills/arbor-agent-resume-report/SKILL.md
