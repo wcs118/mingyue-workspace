@@ -54,10 +54,16 @@ RPM = int(os.environ.get("KIMI_RPM", "2"))
 class Limiter:
     """令牌桶限速(单飞: 并发=1)"""
     def __init__(self, rpm):
+        """
+        init.
+        """
         self.interval = 60.0 / rpm
         self.last = 0.0
         self.lock = None
     def wait(self):
+        """
+        wait.
+        """
         now = time.time()
         gap = now - self.last
         if gap < self.interval:
@@ -68,6 +74,12 @@ LIMITER = Limiter(RPM)
 
 
 def get_key():
+    """
+    get key.
+    
+    Returns:
+        Result of the operation.
+    """
     k = os.environ.get("MOONSHOT_API_KEY", "")
     if not k:
         try:
@@ -80,6 +92,15 @@ def get_key():
 
 
 def http_post(payload, retries=4):
+    """
+    http post.
+    
+    Args:
+        retries: number of retries.
+    
+    Returns:
+        Result of the operation.
+    """
     key = get_key()
     LIMITER.wait()
     req = urllib.request.Request(
@@ -103,6 +124,16 @@ def http_post(payload, retries=4):
 
 
 def chat(messages, model=None, **kw):
+    """
+    chat.
+    
+    Args:
+        model: model identifier.
+        **kw: additional keyword arguments.
+    
+    Returns:
+        Result of the operation.
+    """
     payload = {"model": model or "kimi-k2.6", "messages": messages,
                "max_tokens": kw.pop("max_tokens", 8192), "stream": False}
     payload.update(kw)
@@ -110,6 +141,15 @@ def chat(messages, model=None, **kw):
 
 
 def get_content(data):
+    """
+    get content.
+    
+    Args:
+        data: payload data.
+    
+    Returns:
+        Result of the operation.
+    """
     try:
         return data["choices"][0]["message"]["content"] or ""
     except Exception:
@@ -135,6 +175,15 @@ def enc_image(path):
 
 
 def parse(args, spec):
+    """
+    parse.
+    
+    Args:
+        args: positional arguments.
+    
+    Returns:
+        Result of the operation.
+    """
     opts, pos = {}, []
     i = 0
     while i < len(args):
@@ -151,6 +200,12 @@ def parse(args, spec):
 # ① chat
 # ═══════════════════════════════════════════════════════════
 def cmd_chat(args):
+    """
+    cmd chat.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--system": 1, "--temp": 1, "--model": 1, "--max_tokens": 1})
     q = " ".join(pos).strip() or sys.stdin.read().strip()
     if not q:
@@ -173,6 +228,12 @@ def cmd_chat(args):
 # ② vision 图像理解
 # ═══════════════════════════════════════════════════════════
 def cmd_vision(args):
+    """
+    cmd vision.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--model": 1, "--detail": 1})
     imgs = [a for a in pos if os.path.isfile(a) and a.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"))]
     q = " ".join(a for a in pos if not os.path.isfile(a)) or "描述图片内容(中文)"
@@ -191,6 +252,12 @@ def cmd_vision(args):
 # ③ video 视频理解(抽帧)
 # ═══════════════════════════════════════════════════════════
 def cmd_video(args):
+    """
+    cmd video.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--model": 1})
     vids = [a for a in pos if os.path.isfile(a) and a.lower().endswith((".mp4", ".mov", ".avi", ".mkv", ".webm"))]
     q = " ".join(a for a in pos if not os.path.isfile(a)) or "描述视频内容(中文)"
@@ -208,6 +275,12 @@ def cmd_video(args):
 # ④ stream
 # ═══════════════════════════════════════════════════════════
 def cmd_stream(args):
+    """
+    cmd stream.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--model": 1})
     q = " ".join(pos).strip()
     if not q:
@@ -244,6 +317,12 @@ def cmd_stream(args):
 # ⑤ tools
 # ═══════════════════════════════════════════════════════════
 def cmd_tools(args):
+    """
+    cmd tools.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--model": 1})
     q = " ".join(pos).strip() or "计算 (12+34)*5 等于多少"
     model = opts.get("--model", "kimi-k2.6")
@@ -279,6 +358,12 @@ def cmd_tools(args):
 # ⑥ json
 # ═══════════════════════════════════════════════════════════
 def cmd_json(args):
+    """
+    cmd json.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--fields": 1})
     content = " ".join(pos).strip()
     if not content:
@@ -305,6 +390,12 @@ def cmd_json(args):
 # ⑦ schema
 # ═══════════════════════════════════════════════════════════
 def cmd_schema(args):
+    """
+    cmd schema.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--schema": 1})
     content = " ".join(pos).strip()
     if not content:
@@ -334,6 +425,12 @@ def cmd_schema(args):
 # ⑨ search 联网搜索
 # ═══════════════════════════════════════════════════════════
 def cmd_search(args):
+    """
+    cmd search.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--model": 1})
     q = " ".join(pos).strip()
     if not q:
@@ -359,6 +456,12 @@ def cmd_search(args):
 # ⑩ partial 续写模式
 # ═══════════════════════════════════════════════════════════
 def cmd_partial(args):
+    """
+    cmd partial.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--model": 1, "--prefix": 1})
     q = " ".join(pos).strip()
     if not q:
@@ -375,6 +478,12 @@ def cmd_partial(args):
 # ⑪ batch 批量
 # ═══════════════════════════════════════════════════════════
 def cmd_batch(args):
+    """
+    cmd batch.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--prompt": 1, "--model": 1})
     files = [a for a in pos if os.path.isfile(a)]
     if not files:
@@ -403,6 +512,12 @@ def cmd_batch(args):
 # ⑫ balance 余额
 # ═══════════════════════════════════════════════════════════
 def cmd_balance(args=None):
+    """
+    cmd balance.
+    
+    Args:
+        args: positional arguments.
+    """
     key = get_key()
     req = urllib.request.Request(BASE_URL + "/users/me/balance",
         headers={"Authorization": f"Bearer {key}"})
@@ -418,6 +533,12 @@ def cmd_balance(args=None):
 # ⑬ estimate token 估算
 # ═══════════════════════════════════════════════════════════
 def cmd_estimate(args):
+    """
+    cmd estimate.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--model": 1})
     q = " ".join(pos).strip()
     if not q:
@@ -439,6 +560,12 @@ def cmd_estimate(args):
 # ⑭ context
 # ═══════════════════════════════════════════════════════════
 def cmd_context(args):
+    """
+    cmd context.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--max": 1})
     target = pos[0] if pos else None
     if not target:
@@ -455,6 +582,12 @@ def cmd_context(args):
 # ⑮ models
 # ═══════════════════════════════════════════════════════════
 def cmd_models(args=None):
+    """
+    cmd models.
+    
+    Args:
+        args: positional arguments.
+    """
     print("📦 Kimi 模型(自研封装 v3.0):")
     for m, i in MODELS.items():
         print(f"  {m:<28} ctx={i['ctx']:<8} 模态={i['modal']:<12} {i['desc']}")
@@ -464,6 +597,12 @@ def cmd_models(args=None):
 # ⑯ doctor
 # ═══════════════════════════════════════════════════════════
 def cmd_doctor(args=None):
+    """
+    cmd doctor.
+    
+    Args:
+        args: positional arguments.
+    """
     print(f"🔬 kimi-kit v{VERSION} 自检")
     print(f"  📡 端点: {BASE_URL} | ⚡ 限速: {RPM} RPM")
     try:
@@ -485,6 +624,9 @@ HELP = f"""kimi-kit.py v{VERSION} — Kimi 全能力自研封装(多模态, 内�
 """
 
 def main():
+    """
+    main.
+    """
     if len(sys.argv) < 2:
         print(HELP)
         return

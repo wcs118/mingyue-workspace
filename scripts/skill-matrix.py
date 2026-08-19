@@ -331,6 +331,15 @@ def route_domain(task: str) -> list:
 
 
 def lookup(task: str, verbose: bool = False) -> dict:
+    """
+    lookup.
+    
+    Args:
+        verbose: enable verbose output.
+    
+    Returns:
+        Result of the operation.
+    """
     m = load_matrix()
     domains = route_domain(task)
     if not domains:
@@ -359,6 +368,12 @@ def lookup(task: str, verbose: bool = False) -> dict:
 
 
 def stats() -> dict:
+    """
+    stats.
+    
+    Returns:
+        Result of the operation.
+    """
     m = load_matrix()
     by_domain = {}
     by_agent = {}
@@ -371,8 +386,20 @@ def stats() -> dict:
 
 
 def smoke_test() -> int:
+    """
+    smoke test.
+    
+    Returns:
+        Result of the operation.
+    """
     passed = failed = 0
     def t(name, cond):
+        """
+        t.
+        
+        Args:
+            name: name.
+        """
         nonlocal passed, failed
         print(f"{'✅' if cond else '❌'} {name}")
         passed += cond; failed += (not cond)
@@ -399,6 +426,9 @@ def smoke_test() -> int:
 
 
 def main():
+    """
+    main.
+    """
     ap = argparse.ArgumentParser(description="明月调度矩阵")
     ap.add_argument("mode", choices=["list", "lookup", "domain", "agent", "combo", "pack", "stats", "smoke"])
     ap.add_argument("--task", default="", help="任务描述")

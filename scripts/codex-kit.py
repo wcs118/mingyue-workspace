@@ -95,6 +95,12 @@ DANGER_PATTERNS = [
 # ═══════════════════════════════════════════════════════════
 
 def load_env():
+    """
+    load env.
+    
+    Returns:
+        Result of the operation.
+    """
     try:
         with open(os.path.expanduser("~/.openclaw/openclaw.json")) as f:
             return json.load(f).get("env", {})
@@ -103,6 +109,15 @@ def load_env():
 
 
 def get_key(name):
+    """
+    get key.
+    
+    Args:
+        name: name.
+    
+    Returns:
+        Result of the operation.
+    """
     return os.environ.get(name) or load_env().get(name) or ""
 
 
@@ -124,6 +139,17 @@ def detect_endpoint():
 # ═══════════════════════════════════════════════════════════
 
 def http_post(url, payload, key, retries=3):
+    """
+    http post.
+    
+    Args:
+        url: target URL.
+        key: API key or secret.
+        retries: number of retries.
+    
+    Returns:
+        Result of the operation.
+    """
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
     for attempt in range(retries):
         try:
@@ -157,6 +183,13 @@ def chat(messages, tools=None, model=None, max_tokens=4096):
 
 
 def log(msg, level="INFO"):
+    """
+    log.
+    
+    Args:
+        msg: message content.
+        level: level.
+    """
     if DEBUG or level != "DEBUG":
         print(f"[{level}] {msg}", file=sys.stderr)
 
@@ -179,6 +212,15 @@ TOOL_SCHEMAS = [
 # ═══════════════════════════════════════════════════════════
 
 def check_danger(cmd):
+    """
+    check danger.
+    
+    Args:
+        cmd: command.
+    
+    Returns:
+        Result of the operation.
+    """
     for pat in DANGER_PATTERNS:
         if re.search(pat, cmd):
             return f"🚫 危险命令被拦截: 匹配规则 /{pat}/"
@@ -376,6 +418,9 @@ def verify_workspace(cwd):
 
 
 def save_trace(trace_dir, trace_log):
+    """
+    save trace.
+    """
     with open(os.path.join(trace_dir, "trace.json"), "w") as f:
         json.dump(trace_log, f, ensure_ascii=False, indent=2)
 
@@ -449,6 +494,9 @@ HELP = f"""codex-kit.py v{VERSION} — 自研编码智能体内核(纯标准库,
 
 
 def cmd_doctor():
+    """
+    cmd doctor.
+    """
     print(f"🔬 codex-kit v{VERSION} 自检")
     print("=" * 46)
     for name, url in [("DEEPSEEK", DEEPSEEK_URL), ("DASHSCOPE", DASHSCOPE_URL), ("MOONSHOT", MOONSHOT_URL)]:
@@ -463,6 +511,9 @@ def cmd_doctor():
 
 
 def main():
+    """
+    main.
+    """
     if len(sys.argv) < 2:
         print(HELP)
         sys.exit(0)

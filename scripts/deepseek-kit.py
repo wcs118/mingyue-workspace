@@ -53,12 +53,18 @@ MODELS = {
 class RateLimiter:
     """令牌桶: 默认 RPM=30(DeepSeek 官方宽松), 可 QWEN_RPM 覆盖"""
     def __init__(self, rpm=30):
+        """
+        init.
+        """
         self.rate = rpm / 60.0
         self.cap = rpm
         self.tokens = rpm
         self.lock = threading.Lock()
         self.last = time.time()
     def wait(self):
+        """
+        wait.
+        """
         with self.lock:
             now = time.time()
             self.tokens = min(self.cap, self.tokens + (now - self.last) * self.rate)
@@ -134,6 +140,15 @@ def chat(messages, model=None, **kw):
 
 
 def get_content(data):
+    """
+    get content.
+    
+    Args:
+        data: payload data.
+    
+    Returns:
+        Result of the operation.
+    """
     try:
         return data["choices"][0]["message"]["content"] or ""
     except Exception:
@@ -141,6 +156,15 @@ def get_content(data):
 
 
 def get_reasoning(data):
+    """
+    get reasoning.
+    
+    Args:
+        data: payload data.
+    
+    Returns:
+        Result of the operation.
+    """
     try:
         return data["choices"][0]["message"].get("reasoning_content") or ""
     except Exception:
@@ -165,6 +189,12 @@ def parse(args, spec):
 # ① chat 多轮对话
 # ═══════════════════════════════════════════════════════════
 def cmd_chat(args):
+    """
+    cmd chat.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--system": 1, "--temp": 1, "--model": 1, "--top_p": 1, "--max_tokens": 1, "--effort": 1, "--no_think": 0, "--stop": 1, "--seed": 1})
     q = " ".join(pos).strip() or sys.stdin.read().strip()
     if not q:
@@ -201,6 +231,12 @@ def cmd_chat(args):
 # ② reasoning 思维链
 # ═══════════════════════════════════════════════════════════
 def cmd_reasoning(args):
+    """
+    cmd reasoning.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--model": 1, "--full": 0, "--effort": 1})
     q = " ".join(pos).strip()
     if not q:
@@ -224,6 +260,12 @@ def cmd_reasoning(args):
 # ③ stream 流式
 # ═══════════════════════════════════════════════════════════
 def cmd_stream(args):
+    """
+    cmd stream.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--model": 1})
     q = " ".join(pos).strip()
     if not q:
@@ -301,6 +343,12 @@ def run_tool(name, arg):
     return "未知工具"
 
 def cmd_tools(args):
+    """
+    cmd tools.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--model": 1})
     q = " ".join(pos).strip() or "计算 (12+34)*5 然后列出当前目录文件"
     model = opts.get("--model", "deepseek-v4-flash")
@@ -328,6 +376,12 @@ def cmd_tools(args):
 # ⑤ json 结构化输出
 # ═══════════════════════════════════════════════════════════
 def cmd_json(args):
+    """
+    cmd json.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--fields": 1})
     content = " ".join(pos).strip()
     if not content:
@@ -365,6 +419,12 @@ DEFAULT_SCHEMA = {
 }
 
 def cmd_schema(args):
+    """
+    cmd schema.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--schema": 1})
     content = " ".join(pos).strip()
     if not content:
@@ -395,6 +455,15 @@ def cmd_schema(args):
 # ⑦ batch 批量
 # ═══════════════════════════════════════════════════════════
 def cmd_batch(args):
+    """
+    cmd batch.
+    
+    Args:
+        args: positional arguments.
+    
+    Returns:
+        Result of the operation.
+    """
     from concurrent.futures import ThreadPoolExecutor
     opts, pos = parse(args, {"--prompt": 1, "--workers": 1, "--model": 1})
     files = [a for a in pos if os.path.isfile(a)]
@@ -405,6 +474,12 @@ def cmd_batch(args):
     model = opts.get("--model", "deepseek-v4-flash")
 
     def process_one(f):
+        """
+        process one.
+        
+        Returns:
+            Result of the operation.
+        """
         try:
             with open(f, encoding="utf-8", errors="replace") as fh:
                 content = fh.read()[:6000]
@@ -433,6 +508,12 @@ def cmd_batch(args):
 # ⑧ router 路由
 # ═══════════════════════════════════════════════════════════
 def cmd_router(args):
+    """
+    cmd router.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--models": 1})
     q = " ".join(pos).strip()
     if not q:
@@ -455,6 +536,12 @@ def cmd_router(args):
 # ⑨ context 上下文预算
 # ═══════════════════════════════════════════════════════════
 def cmd_context(args):
+    """
+    cmd context.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {"--max": 1, "--model": 1})
     target = pos[0] if pos else None
     if not target:
@@ -478,10 +565,25 @@ def cmd_context(args):
 # ⑩ history 多轮持久化
 # ═══════════════════════════════════════════════════════════
 def history_path(name):
+    """
+    history path.
+    
+    Args:
+        name: name.
+    
+    Returns:
+        Result of the operation.
+    """
     os.makedirs(HIST_DIR, exist_ok=True)
     return os.path.join(HIST_DIR, f"{name}.json")
 
 def cmd_history(args):
+    """
+    cmd history.
+    
+    Args:
+        args: positional arguments.
+    """
     opts, pos = parse(args, {})
     if not pos:
         # 列出会话
@@ -540,6 +642,12 @@ def cmd_balance(args=None):
 # ⑫ models
 # ═══════════════════════════════════════════════════════════
 def cmd_models(args=None):
+    """
+    cmd models.
+    
+    Args:
+        args: positional arguments.
+    """
     print("📦 DeepSeek 模型(自研封装 v3.0):")
     print("  🧠 thinking 模式: 默认开启(effort=high), 可用 --effort low/high/max 调节")
     print("  🔗 Anthropic 兼容端点: https://api.deepseek.com/anthropic")
@@ -551,6 +659,12 @@ def cmd_models(args=None):
 # ⑫ doctor 自检
 # ═══════════════════════════════════════════════════════════
 def cmd_doctor(args=None):
+    """
+    cmd doctor.
+    
+    Args:
+        args: positional arguments.
+    """
     print(f"🔬 deepseek-kit v{VERSION} 自检")
     print(f"  📡 端点: {BASE_URL}")
     print(f"  ⚡ 限速: {LIMITER.cap} RPM")
@@ -576,6 +690,9 @@ HELP = f"""deepseek-kit.py v{VERSION} — DeepSeek V4 全能力自研封装
 """
 
 def main():
+    """
+    main.
+    """
     if len(sys.argv) < 2:
         print(HELP)
         return

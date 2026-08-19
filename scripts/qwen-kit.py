@@ -147,6 +147,15 @@ def detect_config(prefer_modal=None):
     cfg_env = load_openclaw_env()
 
     def get(name):
+        """
+        get.
+        
+        Args:
+            name: name.
+        
+        Returns:
+            Result of the operation.
+        """
         return env.get(name) or cfg_env.get(name) or ""
 
     # 用户显式指定
@@ -187,12 +196,18 @@ def detect_config(prefer_modal=None):
 class RateLimiter:
     """令牌桶限速器: 控制每分钟最大请求数"""
     def __init__(self, rpm=3):
+        """
+        init.
+        """
         self.rpm = rpm
         self.lock = threading.Lock()
         self.tokens = rpm
         self.last_refill = time.time()
 
     def acquire(self):
+        """
+        acquire.
+        """
         with self.lock:
             now = time.time()
             elapsed = now - self.last_refill
@@ -815,6 +830,12 @@ def cmd_batch(args):
     model = opts.get("--model") or default_model
 
     def process_one(fpath):
+        """
+        process one.
+        
+        Returns:
+            Result of the operation.
+        """
         with open(fpath) as f:
             content = f.read()[:8000]  # 截断超长
         data = chat_completion(
@@ -1062,6 +1083,12 @@ def cmd_context(args):
 # ═══════════════════════════════════════════════════════════
 
 def cmd_models(args=None):
+    """
+    cmd models.
+    
+    Args:
+        args: positional arguments.
+    """
     print("📦 千问模型全家桶(拆解清单):")
     print(f"{'模型':<22} {'上下文':<10} {'模态':<16} 说明")
     print("-" * 72)
@@ -1193,6 +1220,9 @@ HELP = """qwen-kit.py v{VERSION} — 千问全家桶完整封装(自研资产)
 
 
 def main():
+    """
+    main.
+    """
     if len(sys.argv) < 2:
         print(HELP)
         sys.exit(0)

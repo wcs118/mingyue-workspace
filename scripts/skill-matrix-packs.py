@@ -155,6 +155,16 @@ def find_packs(task: str) -> list:
 
 
 def pack_info(name: str, verbose: bool = False) -> dict:
+    """
+    pack info.
+    
+    Args:
+        name: name.
+        verbose: enable verbose output.
+    
+    Returns:
+        Result of the operation.
+    """
     pack = COMBO_PACKS[name]
     info = {"pack": name, "trigger": pack["trigger"], "engine": pack["engine"], "note": pack["note"]}
     if verbose:
@@ -168,6 +178,15 @@ def pack_info(name: str, verbose: bool = False) -> dict:
 
 
 def main_pack(args) -> int:
+    """
+    main pack.
+    
+    Args:
+        args: positional arguments.
+    
+    Returns:
+        Result of the operation.
+    """
     if not args.task:
         print("📦 场景组合包清单:")
         for name, pack in COMBO_PACKS.items():

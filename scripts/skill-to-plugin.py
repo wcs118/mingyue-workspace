@@ -29,6 +29,12 @@ OUT_DIR = WORKSPACE / "reference" / "dsh-plugins"
 # 技能 → dsh 插件映射:技能 SKILL.md 转成 cordis 插件行
 # dsh 插件 = 一个 cordis 行(id + name + config),config 里挂技能描述/入口
 def list_skills() -> list:
+    """
+    list skills.
+    
+    Returns:
+        Result of the operation.
+    """
     skills = []
     if SKILLS_DIR.is_dir():
         for d in sorted(SKILLS_DIR.iterdir()):
@@ -37,6 +43,15 @@ def list_skills() -> list:
     return skills
 
 def read_skill_desc(name: str) -> str:
+    """
+    read skill desc.
+    
+    Args:
+        name: name.
+    
+    Returns:
+        Result of the operation.
+    """
     f = SKILLS_DIR / name / "SKILL.md"
     if not f.exists():
         return ""
@@ -54,6 +69,15 @@ def read_skill_desc(name: str) -> str:
     return ""
 
 def convert_one(name: str) -> dict:
+    """
+    convert one.
+    
+    Args:
+        name: name.
+    
+    Returns:
+        Result of the operation.
+    """
     desc = read_skill_desc(name)
     safe_id = re.sub(r"[^a-zA-Z0-9-]", "-", name).lower()
     plugin_dir = OUT_DIR / name
@@ -110,6 +134,12 @@ def convert_one(name: str) -> dict:
     return {"skill": name, "id": f"skill-{safe_id}", "pkg": pkg_name, "desc": desc, "path": str(plugin_dir)}
 
 def smoke_test() -> int:
+    """
+    smoke test.
+    
+    Returns:
+        Result of the operation.
+    """
     # 用内置样例技能验证格式
     test_dir = OUT_DIR / "_smoke-test"
     test_dir.mkdir(parents=True, exist_ok=True)
@@ -125,6 +155,9 @@ def smoke_test() -> int:
     return 0 if ok_format else 1
 
 def main():
+    """
+    main.
+    """
     ap = argparse.ArgumentParser(description="技能→dsh-plugin 转换器")
     ap.add_argument("mode", choices=["list", "convert", "smoke"])
     ap.add_argument("--skill", default="", help="技能名")

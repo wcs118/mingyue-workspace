@@ -39,6 +39,17 @@ JSON 字段(固定):
 
 
 def _post(url, payload, key, timeout=120):
+    """
+    post.
+    
+    Args:
+        url: target URL.
+        key: API key or secret.
+        timeout: timeout in seconds.
+    
+    Returns:
+        Result of the operation.
+    """
     req = urllib.request.Request(
         url, data=json.dumps(payload).encode(),
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
@@ -48,6 +59,15 @@ def _post(url, payload, key, timeout=120):
 
 
 def deepseek_extract(text):
+    """
+    deepseek extract.
+    
+    Args:
+        text: input text.
+    
+    Returns:
+        Result of the operation.
+    """
     key = os.environ.get("DEEPSEEK_API_KEY")
     if not key:
         raise SystemExit("❌ 缺少环境变量 DEEPSEEK_API_KEY")
@@ -75,6 +95,12 @@ def deepseek_extract(text):
 
 
 def kimi_extract(image_path, note):
+    """
+    kimi extract.
+    
+    Returns:
+        Result of the operation.
+    """
     key = os.environ.get("MOONSHOT_API_KEY")
     if not key:
         raise SystemExit("❌ 缺少环境变量 MOONSHOT_API_KEY")
@@ -95,6 +121,15 @@ def kimi_extract(image_path, note):
 
 
 def strip_json(text):
+    """
+    strip json.
+    
+    Args:
+        text: input text.
+    
+    Returns:
+        Result of the operation.
+    """
     t = text.strip()
     if t.startswith("```"):
         t = t.strip("`")
@@ -104,6 +139,9 @@ def strip_json(text):
 
 
 def main():
+    """
+    main.
+    """
     args = sys.argv[1:]
     if not args or args[0] not in ("--text", "--image"):
         raise SystemExit(__doc__)
