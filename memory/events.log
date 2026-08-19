@@ -1405,3 +1405,55 @@ Slash commands cannot be executed via --message from the CLI. Use: openclaw sess
 2026-08-19 15:12:14 [session-watch] 正常(68% < 90%),无需处理
 2026-08-19 15:30:00 [session-watch] 正常(51% < 90%),无需处理
 2026-08-19 16:00:00 [session-watch] 正常(70% < 90%),无需处理
+基线：snapshot-20260816-101150.sha256
+
+  CHANGED : MEMORY.md
+  CHANGED : HEARTBEAT.md
+  CHANGED : memory/trending-latest.md
+  CHANGED : skills/deepseek-harness/SKILL.md
+=== 梦境进化循环 2026-08-19 16:03:31 ===
+
+候选观察：0 条 | 已晋升规则：2 条
+无候选观察，本轮无需晋升。
+=== 规则验证阶段 2026-08-19 16:03:31 ===
+
+待验证规则：6 条
+
+--- 验证标准（下轮巡检时逐条检查行为符合度）---
+  [1] [x] 0811-1 框架初始化（占位）→ 已归档 evolution-log，无需重构
+  [2] [x] 0811-2 快照脚本路径解析 bug → 已修复（${line#*  }）+ 教训入 evolution-log
+  [3] [x] 0811-3 gm agent 配置要点 → 已重构为 R9（合并入 rules/path-routing.md, 2026-08-12）
+  [4] [x] 0811-4 gm 实战链路验证 → 已重构为 R10（合并入 rules/phoenix-triggers.md, 2026-08-12）
+  [5] [ ] R9 待验证: gm agent 配置契约(行为检查: 下次派活时是否按契约配置)
+  [6] [ ] R10 待验证: gm 实战交付标准(行为检查: 派活后是否独立复核产出)
+
+检查方法：本轮工作中是否观察到规则描述的行为?符合→保留;不符合→回滚。
+（手动处理：符合请在 rule-verification.md 对应行标注 ✅ 并移除;
+  不符合标注 ❌ 并执行 bash scripts/phoenix-snapshot.sh restore 回滚相关改动）
+--- framework check done ---
+基线：snapshot-20260816-101150.sha256
+
+  CHANGED : MEMORY.md
+  CHANGED : HEARTBEAT.md
+  CHANGED : memory/trending-latest.md
+  CHANGED : skills/deepseek-harness/SKILL.md
+=== 梦境进化循环 2026-08-19 16:04:05 ===
+
+候选观察：0 条 | 已晋升规则：2 条
+无候选观察，本轮无需晋升。
+=== 规则验证阶段 2026-08-19 16:04:05 ===
+
+待验证规则：6 条
+
+--- 验证标准（下轮巡检时逐条检查行为符合度）---
+  [1] [x] 0811-1 框架初始化（占位）→ 已归档 evolution-log，无需重构
+  [2] [x] 0811-2 快照脚本路径解析 bug → 已修复（${line#*  }）+ 教训入 evolution-log
+  [3] [x] 0811-3 gm agent 配置要点 → 已重构为 R9（合并入 rules/path-routing.md, 2026-08-12）
+  [4] [x] 0811-4 gm 实战链路验证 → 已重构为 R10（合并入 rules/phoenix-triggers.md, 2026-08-12）
+  [5] [ ] R9 待验证: gm agent 配置契约(行为检查: 下次派活时是否按契约配置)
+  [6] [ ] R10 待验证: gm 实战交付标准(行为检查: 派活后是否独立复核产出)
+
+检查方法：本轮工作中是否观察到规则描述的行为?符合→保留;不符合→回滚。
+（手动处理：符合请在 rule-verification.md 对应行标注 ✅ 并移除;
+  不符合标注 ❌ 并执行 bash scripts/phoenix-snapshot.sh restore 回滚相关改动）
+--- framework check done ---
