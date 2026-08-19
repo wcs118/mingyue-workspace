@@ -1397,3 +1397,11 @@ Slash commands cannot be executed via --message from the CLI. Use: openclaw sess
 2026-08-19 13:05 | fail | guard-exec | false | 原因:failed:exit=1 | 尝试:false | 下次:修复或升级
 2026-08-19 13:30:11 [session-watch] 正常(65% < 90%),无需处理
 2026-08-19 15:01:20 [session-watch] 正常(71% < 90%),无需处理
+2026-08-19 15:07:35 [session-watch] 正常(68% < 90%),无需处理
+2026-08-19 15:08:08 [session-watch] 正常(68% < 90%),无需处理
+2026-08-19 15:08:41 [session-watch] 正常(68% < 90%),无需处理
+2026-08-19 15:09:46 [session-watch] 正常(68% < 90%),无需处理
+2026-08-19 15:10:47 [session-watch] 正常(68% < 90%),无需处理
+2026-08-19 15:12:14 [session-watch] 正常(68% < 90%),无需处理
+2026-08-19 15:30:00 [session-watch] 正常(51% < 90%),无需处理
+2026-08-19 16:00:00 [session-watch] 正常(70% < 90%),无需处理
